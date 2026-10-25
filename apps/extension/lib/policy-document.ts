@@ -57,8 +57,11 @@ export function policyCandidates(links: { href: string; label: string }[], pageU
   const candidates: PolicyCandidate[] = [];
   for (const link of links.slice(0, 1000)) {
     if (link.href.startsWith('#')) continue;
+    if (/preferences|settings|adchoices|настройк|предпочтени/iu.test(link.label)) continue;
     const url = policyUrl(link.href, pageUrl);
     if (!url || seen.has(url.href)) continue;
+    // Promotions are not the site's general user agreement.
+    if (/offer[-_/]terms|special[-_/]offer|promotional[-_/]terms/i.test(url.pathname)) continue;
     let path = url.pathname;
     try { path = decodeURI(path); } catch { /* Keep malformed escapes as literal text. */ }
     const kind = policyKind(link.label.slice(0, 200)) ?? policyKind(path.replace(/[-_/]/g, ' '));
@@ -67,7 +70,8 @@ export function policyCandidates(links: { href: string; label: string }[], pageU
     candidates.push({ url: url.href, title: link.label.trim().slice(0, 200) || POLICY_KIND_LABEL[kind], kind });
   }
   const rank = (candidate: PolicyCandidate) =>
-    ({ terms: 0, privacy: 1, cookies: 2 }[candidate.kind]) + (new URL(candidate.url).origin === origin ? 0 : 10);
+    ({ terms: 0, privacy: 1, cookies: 2 }[candidate.kind]) + (new URL(candidate.url).origin === origin ? 0 : 10) -
+    (/terms of (?:use|service)|user agreement|пользовательск[а-я]* соглашен|условия использования/iu.test(candidate.title) ? 2 : 0);
   return candidates.sort((a, b) => rank(a) - rank(b)).slice(0, 6);
 }
 

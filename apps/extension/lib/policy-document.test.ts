@@ -16,6 +16,9 @@ it.each([
 
 it('normalizes relative links, deduplicates, ranks same-origin agreements before privacy and caps candidates', () => {
   const links = [
+    { href: '/offer-terms/introductory.html', label: 'See terms' },
+    { href: '/', label: 'Cookie preferences' },
+    { href: '/privacy/opt-out.html', label: 'AdChoices' },
     { href: 'https://external.com/terms', label: 'Terms' },
     { href: '/privacy', label: 'Privacy policy' },
     { href: '#cookies-modal', label: 'Cookies' },

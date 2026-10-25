@@ -31,6 +31,7 @@ export default function PolicyForm({ controller, hostname, policyText, evidence,
     setLoading(true);
     setResult(null);
     onChange('');
+    if (target !== undefined) setUrl(target);
     let rejectAbort: () => void = () => {};
     const aborted = new Promise<never>((_, reject) => {
       rejectAbort = () => reject(new Error('cancelled'));
