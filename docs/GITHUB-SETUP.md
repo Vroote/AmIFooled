@@ -47,15 +47,34 @@ gh api --method PUT repos/Vroote/AmIFooled/branches/main/protection --input .git
 
 Действует на `refs/heads/main`: PR-only, **1 approve**, stale approvals dismissed,
 required `ci` со strict-политикой актуальной main, resolved conversations, linear history,
-запрет deletion и non-fast-forward. `bypass_actors` пуст, API отвечает
-`current_user_can_bypass: never` — Admin тоже не обходит правила. Code owners не требуются.
+запрет deletion и non-fast-forward. Code owners не требуются.
+
+Пустой `bypass_actors` и ответ `current_user_can_bypass: never` наблюдались в сессии
+владельца под Admin — это утверждение владельца, а не независимо перепроверенный факт:
+GitHub скрывает `bypass_actors` от аккаунтов, которые не могут редактировать ruleset,
+поэтому под ролью Write отсутствие поля ничего не доказывает. `current_user_can_bypass`
+говорит только о текущем аккаунте. Перепроверять это может другой Admin.
 
 GitHub добавил к `pull_request` собственный параметр по умолчанию
 `require_extra_approval_for_unattributed_changes: true`; он записан в `.github/ruleset.json`,
 чтобы файл совпадал с сервером. Для commits, автор которых не связан с GitHub-аккаунтом,
-это может потребовать второй approve вместо согласованного одного. Если PR неожиданно
-просит два approve — причина здесь; снимать параметр только решением владельца, PATCH
-на `rulesets/25818867`, с записью в этом файле.
+это может потребовать второй approve вместо согласованного одного. На PR #14 параметр
+второй approve не запросил, то есть на обычных commits участников он не срабатывает.
+
+Если PR неожиданно просит два approve — причина здесь. Снимать только решением владельца
+под Admin, с записью в этом файле. REST обновляет repository ruleset методом **PUT**
+`/repos/{owner}/{repo}/rulesets/{ruleset_id}`; PATCH для этого endpoint не поддерживается:
+
+```sh
+gh api repos/Vroote/AmIFooled/rulesets/25818867 > /tmp/ruleset-25818867.json
+# отредактировать в копии только нужный параметр
+gh api --method PUT repos/Vroote/AmIFooled/rulesets/25818867 --input /tmp/ruleset-25818867.json
+```
+
+PUT заменяет ruleset целиком, поэтому сначала GET под Admin, затем менять ровно один
+параметр в полученном объекте, сохранив остальные `rules`, `conditions` и `bypass_actors`.
+Тело GET содержит лишние для записи поля (`id`, `created_at`, `_links`) — их убрать.
+[Update a repository ruleset](https://docs.github.com/en/rest/repos/rules#update-a-repository-ruleset).
 
 ### Проверено на реальном PR
 
@@ -87,11 +106,22 @@ python3 scripts/project-sync.py --init-fields
 
 Статус на момент #10: Actions secrets пусты, `PROJECT_TOKEN` **не установлен**, поэтому
 workflow только пишет сообщение в summary и ничего не синхронизирует; его успешный
-результат не означает обновление доски. OAuth token этой сессии не имеет scope
-`read:project`, так что `gh project` и `project-sync.py` до `gh auth refresh` не работают —
-scope расширяет владелец сам, в repo токены не сохраняются. Встроенные Project workflows
-остаются включёнными с момента setup; их точные фильтры и целевые статусы API не раскрывает,
-это по-прежнему ручная проверка владельца в Project → Workflows.
+результат не означает обновление доски.
+
+Локальный путь проверен и работает. Доступ к Project зависит от scope **конкретной сессии**,
+а не от настроек проекта: токен `DREdward-chell` scope `project` имеет и sync выполнял,
+а у сессии владельца `Vroote` его сначала не было, что и чинится `gh auth refresh`. После
+расширения scope `python3 scripts/project-sync.py` под `Vroote` обновил все 15 карточек.
+Scope расширяет каждый участник сам, токены в repo не сохраняются.
+
+Встроенные Project workflows остаются включёнными с момента setup; их точные фильтры и
+целевые статусы API не раскрывает, это по-прежнему ручная проверка владельца в
+Project → Workflows.
+
+**Открытый follow-up после закрытия #10:** решение по `PROJECT_TOKEN`. Либо владелец
+создаёт secret и штатный `project-sync.yml` начинает работать по событиям, либо команда
+осознанно остаётся на локальном запуске после claim/review/merge. Пока решения нет,
+не объявлять автоматическую синхронизацию Project работающей.
 
 `--init-fields` только добавляет отсутствующие поля; повторный запуск не дублирует items.
 Обычный `project-sync.py` обновляет Status и плановые поля; сохраните эту семантику,
