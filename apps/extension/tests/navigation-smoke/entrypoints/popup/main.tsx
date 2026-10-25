@@ -1,10 +1,8 @@
 /**
  * Manual harness popup: the opt-in card bound to the real active tab.
  *
- * The production popup still receives its hostname from the demo controller of #5, so
- * its card reads demo.example. This harness asks the browser instead, which is what the
- * navigation scenario needs. It sends nothing by itself; the badge comes from the
- * background registration with the fixture provider.
+ * Like the production popup, this resolves the real active tab. It sends nothing;
+ * predictable badge counts come from the background's fixture provider without HTTP.
  */
 
 import { StrictMode, useEffect, useState } from 'react';

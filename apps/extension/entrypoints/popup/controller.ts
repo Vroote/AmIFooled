@@ -22,6 +22,8 @@ export interface AnalyzeInput {
 }
 
 export interface PopupController {
+  subscribeInvalidation?(listener: () => void): () => void;
+  dispose?(): void;
   /** Resolve the active tab and whatever bounded facts may be sent with the policy. */
   prepare(): Promise<PreparedContext>;
   /** Optional: read the policy the user opened, for the user to review before sending. */

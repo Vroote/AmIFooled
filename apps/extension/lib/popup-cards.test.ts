@@ -41,3 +41,18 @@ it('unavailable analysis does not claim a completed comparison found no differen
   expect(html).toContain('Результат сверки недоступен');
   expect(html).not.toContain('По текущим правилам расхождений нет');
 });
+
+it('labels a document-only warning as requiring attention rather than an observed discrepancy', () => {
+  const html = renderToStaticMarkup(createElement(AnalysisCard, {
+    state: { phase: 'ok', data: {
+      hostname: 'example.com', status: 'insufficient_data', mode: 'llm',
+      summary: 'Замечание относится только к документу.',
+      findings: [{ title: 'Передача рекламным партнёрам', explanation: 'Уточните получателей.',
+        severity: 'warning', policy_quote: 'Передаём данные рекламным партнёрам.', evidence_ids: [] }],
+      limitations: ['Поведение сайта не проверено.'],
+    } }, evidence: [], canRetry: false, onRetry: () => {},
+  }));
+  expect(html).toContain('Требует внимания');
+  expect(html).not.toContain('Расхождение');
+  expect(html).toContain('Поведение сайта не проверено');
+});

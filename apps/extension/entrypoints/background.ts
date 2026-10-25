@@ -1,12 +1,15 @@
 import { defineBackground } from 'wxt/utils/define-background';
-
+import { requestApi } from '../lib/api-client';
+import { parseApiBase } from '../lib/api-config';
+import { registerBackgroundTransport } from '../lib/controller-background';
 import { registerNavigationChecks } from '../lib/navigation';
-import { createFixtureBreachesCheck } from '../lib/navigation-fixture';
 
 export default defineBackground(() => {
-  // Background transport belongs to #6: it replaces the fixture check with the real API
-  // client without changing this call. Listeners are attached here, synchronously, so an
-  // MV3 worker restart re-registers them; the per-site opt-in lives in
-  // chrome.storage.local rather than in memory.
-  registerNavigationChecks({ checkBreaches: createFixtureBreachesCheck() });
+  const apiBase = parseApiBase(import.meta.env.WXT_API_BASE_URL);
+  registerBackgroundTransport(apiBase);
+  // Both listeners register synchronously when the MV3 worker starts. Navigation
+  // checks share the real API client, but send only an explicitly enabled hostname.
+  registerNavigationChecks({
+    checkBreaches: (hostname, signal) => requestApi('breaches', { hostname }, signal, apiBase),
+  });
 });

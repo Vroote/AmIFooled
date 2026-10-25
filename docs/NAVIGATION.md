@@ -1,4 +1,4 @@
-# Бейдж при заходе на сайт — handoff для #6/#8
+# Бейдж при заходе на сайт — проверка для #8
 
 Добровольный режим: при открытии сайта, который пользователь явно разрешил, на сервер
 уходит **только hostname**, а на значке появляется число известных утечек этого сайта.
@@ -19,22 +19,26 @@ interface NavigationDeps {
 ```
 
 `checkBreaches` — **тот же контракт**, что `PopupController.checkBreaches` из #5.
-Своего HTTP-клиента здесь нет: это задача #6.
+HTTP выполняет общий клиент из #6.
 
-### Что делает #6
+### Подключение к backend
 
-В `apps/extension/entrypoints/background.ts` заменить одну строку:
+В `apps/extension/entrypoints/background.ts` зарегистрированы оба обработчика: transport
+для ручного popup и opt-in navigation. Они используют один `WXT_API_BASE_URL`:
 
 ```ts
-registerNavigationChecks({ checkBreaches: createFixtureBreachesCheck() });
-// →
-registerNavigationChecks({ checkBreaches: realApiClient.checkBreaches });
+registerBackgroundTransport(apiBase);
+registerNavigationChecks({
+  checkBreaches: (hostname, signal) => requestApi('breaches', { hostname }, signal, apiBase),
+});
 ```
 
-После этого `apps/extension/lib/navigation-fixture.ts` можно удалить целиком. API модуля
-не меняется. Fixture отвечает синтетикой только для `demo.example`, `localhost` и
-`127.0.0.1`; любой другой сайт получает `unavailable`, то есть бейдж `?` — реальному
-сервису выдуманное число утечек не присваивается.
+Production popup получает hostname реальной активной вкладки. Разрешение backend host
+выдаётся манифестом; доступ к проверяемым сайтам остаётся optional и требует opt-in.
+Отключение сайта убирает его настройку и optional grant; обязательное разрешение самого
+backend, если его hostname совпал с сайтом, остаётся для ручных API-запросов.
+`lib/navigation-fixture.ts` используется только отдельным smoke harness: синтетические
+числа для `demo.example`, `localhost` и `127.0.0.1`, `unavailable` для остальных сайтов.
 
 ## Opt-in
 
@@ -118,12 +122,11 @@ npm run build
 Установка unpacked MV3 расширения в окружении автора недоступна, поэтому сценарий ниже
 описан, но не пройден. Его нужно выполнить перед закрытием #7.
 
-**Проверять нужно на harness, а не на production-сборке.** В production popup hostname
-приходит из demo-контроллера #5 и всегда равен `demo.example`, поэтому карточка там
-предложит включить проверку для `demo.example`, а не для открытого сайта. Реальный
-контроллер активной вкладки подключает #6. До тех пор для ручной проверки есть отдельное
-тестовое расширение, которое спрашивает настоящую активную вкладку; логика бейджа и
-регистрация в background у него те же, что в production.
+Для воспроизводимых чисел без сети используйте отдельный harness ниже. Он определяет
+реальную активную вкладку и использует production opt-in/navigation с fixture-провайдером.
+Production-сборка также определяет настоящую вкладку, но запрашивает backend: числа там
+зависят от источника HIBP и не обязаны совпадать с шагами ниже. Полный live-сценарий с
+backend нужно отдельно пройти по `docs/START.md` и `docs/INTEGRATION.md`.
 
 ```sh
 npx wxt build apps/extension/tests/navigation-smoke
@@ -153,5 +156,6 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory apps/extension/tests/co
 8. Перезапустить service worker в `chrome://extensions` → включённый сайт после
    перезагрузки страницы снова получает бейдж: opt-in взят из storage.
 
-Что смотреть в DevTools background: при шагах 1, 2, 5, 6 и 7 исходящих запросов быть не
-должно; на шагах 3–4 — один запрос с hostname и без path/query.
+Harness не делает HTTP-запросов ни на одном шаге. При повторении на production-сборке
+без отдельных ручных проверок в popup: шаги 1, 2, 5, 6 и 7 не отправляют запросов,
+а шаги 3–4 отправляют только hostname в `/v1/breaches`, без пути/query посещаемой страницы.

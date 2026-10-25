@@ -3,7 +3,7 @@ import { defineBackground } from 'wxt/utils/define-background';
 import { registerNavigationChecks } from '../../../lib/navigation';
 import { createFixtureBreachesCheck } from '../../../lib/navigation-fixture';
 
-// Same registration as production: only the popup differs in this harness.
+// Same navigation module as production, with a deterministic provider instead of HTTP.
 export default defineBackground(() => {
   registerNavigationChecks({ checkBreaches: createFixtureBreachesCheck() });
 });

@@ -3,6 +3,8 @@
 import type { RequestFailure } from '../entrypoints/popup/state';
 
 export const FAILURE_TEXT: Record<RequestFailure['kind'], string> = {
+  page_changed: 'Страница или подключение изменились. Откройте проверку заново.',
+  unsupported_page: 'Эту страницу нельзя проверить. Откройте обычный HTTP(S)-сайт.',
   offline: 'Нет сети. Проверка не выполнена — это не результат «всё чисто».',
   timeout: 'Проверка не успела завершиться. Результата нет.',
   not_implemented: 'Эта часть сервиса ещё не включена на сервере.',
@@ -14,6 +16,7 @@ export const FAILURE_TEXT: Record<RequestFailure['kind'], string> = {
 };
 
 export const UNSUPPORTED_TEXT = {
+  changed: 'Страница или подключение изменились. Обновите контекст проверки перед отправкой.',
   restricted: 'Это служебная страница браузера — расширение не может её читать.',
   scheme: 'Проверка работает только на страницах http(s).',
   'no-tab': 'Активная вкладка не найдена. Откройте сайт и запустите проверку снова.',
@@ -32,7 +35,7 @@ export const ANALYSIS_MODE_TEXT = {
 } as const;
 
 export const SEVERITY_TEXT = {
-  warning: 'Расхождение',
+  warning: 'Требует внимания',
   info: 'К сведению',
 } as const;
 

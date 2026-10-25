@@ -13,6 +13,8 @@ import NavigationOptIn from '../../components/NavigationOptIn';
 import PolicyForm from '../../components/PolicyForm';
 import { OVERALL_TEXT, UNSUPPORTED_TEXT } from '../../components/messages';
 import { RequestError, isRetryable, type PopupController } from './controller';
+import { sanitizePolicyText } from '../../lib/collector-policy';
+import ActionButton from '../../components/ActionButton';
 import {
   canCheckBreaches,
   canSubmitPolicy,
@@ -24,7 +26,7 @@ import {
   type RequestFailure,
 } from './state';
 
-const REQUEST_TIMEOUT_MS = 16_000;
+const REQUEST_TIMEOUT_MS = 20_000;
 
 function failureOf(error: unknown): RequestFailure {
   if (error instanceof RequestError) {
@@ -39,38 +41,53 @@ function failureOf(error: unknown): RequestFailure {
 export default function App({ controller }: { controller: PopupController }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const pending = useRef<AbortController[]>([]);
+  const generation = useRef(0);
+
+  const preparePage = useCallback(() => {
+    const version = ++generation.current;
+    pending.current.forEach((request) => request.abort());
+    dispatch({ type: 'page/started' });
+    controller.prepare().then((prepared) => {
+      if (version === generation.current) {
+        dispatch({ type: 'page/resolved', prepared });
+      }
+    }).catch((error: unknown) => {
+      if (version === generation.current) dispatch({ type: 'page/failed', reason:
+        error instanceof RequestError && error.failure.kind === 'unsupported_page' ? 'restricted' : 'changed' });
+    });
+  }, [controller]);
 
   useEffect(() => {
-    let active = true;
-    controller
-      .prepare()
-      .then((prepared) => {
-        if (active) {
-          dispatch({ type: 'page/resolved', prepared });
-        }
-      })
-      .catch(() => {
-        if (active) {
-          dispatch({ type: 'page/failed', reason: 'no-tab' });
-        }
-      });
+    const unsubscribe = controller.subscribeInvalidation?.(() => {
+      generation.current++;
+      pending.current.forEach((request) => request.abort());
+      dispatch({ type: 'page/failed', reason: 'changed' });
+    });
+    preparePage();
     return () => {
-      active = false;
+      generation.current++;
+      unsubscribe?.();
       for (const controllerToStop of pending.current) {
         controllerToStop.abort();
       }
       pending.current = [];
     };
-  }, [controller]);
+  }, [controller, preparePage]);
 
   const withTimeout = useCallback(async <T,>(run: (signal: AbortSignal) => Promise<T>) => {
     const aborter = new AbortController();
     pending.current.push(aborter);
     const timer = setTimeout(() => aborter.abort(), REQUEST_TIMEOUT_MS);
+    let rejectAbort: () => void = () => {};
+    const cancelled = new Promise<never>((_, reject) => {
+      rejectAbort = () => reject(new DOMException('Cancelled', 'AbortError'));
+      aborter.signal.addEventListener('abort', rejectAbort, { once: true });
+    });
     try {
-      return await run(aborter.signal);
+      return await Promise.race([run(aborter.signal), cancelled]);
     } finally {
       clearTimeout(timer);
+      aborter.signal.removeEventListener('abort', rejectAbort);
       pending.current = pending.current.filter((item) => item !== aborter);
     }
   }, []);
@@ -82,12 +99,19 @@ export default function App({ controller }: { controller: PopupController }) {
       return;
     }
     const policyText = state.policyText;
+    const cleaned = sanitizePolicyText(policyText);
+    if (cleaned.text !== policyText) {
+      dispatch({ type: 'policy/changed', text: cleaned.text });
+      dispatch({ type: 'notice/set', message: 'Email, части URL и управляющие символы удалены. Проверьте очищенный текст и нажмите отправку ещё раз.' });
+      return;
+    }
     const evidence = state.evidence;
+    const version = generation.current;
     dispatch({ type: 'analysis/started' });
     withTimeout((signal) => controller.analyze({ hostname, policyText, evidence }, signal))
-      .then((data) => dispatch({ type: 'analysis/succeeded', hostname, data }))
+      .then((data) => { if (version === generation.current) dispatch({ type: 'analysis/succeeded', hostname, data }); })
       .catch((error: unknown) =>
-        dispatch({ type: 'analysis/failed', hostname, failure: failureOf(error) }),
+        { if (version === generation.current) dispatch({ type: 'analysis/failed', hostname, failure: failureOf(error) }); },
       );
   }, [controller, hostname, state.evidence, state.policyText, withTimeout]);
 
@@ -96,10 +120,11 @@ export default function App({ controller }: { controller: PopupController }) {
       return;
     }
     dispatch({ type: 'breaches/started' });
+    const version = generation.current;
     withTimeout((signal) => controller.checkBreaches(hostname, signal))
-      .then((data) => dispatch({ type: 'breaches/succeeded', hostname, data }))
+      .then((data) => { if (version === generation.current) dispatch({ type: 'breaches/succeeded', hostname, data }); })
       .catch((error: unknown) =>
-        dispatch({ type: 'breaches/failed', hostname, failure: failureOf(error) }),
+        { if (version === generation.current) dispatch({ type: 'breaches/failed', hostname, failure: failureOf(error) }); },
       );
   }, [controller, hostname, withTimeout]);
 
@@ -107,9 +132,11 @@ export default function App({ controller }: { controller: PopupController }) {
     if (!controller.readPolicyFromPage) {
       return;
     }
+    const version = generation.current;
     controller
       .readPolicyFromPage()
       .then((text) => {
+        if (version !== generation.current) return;
         if (text && text.trim().length > 0) {
           dispatch({ type: 'policy/filled-from-page', text });
           return;
@@ -119,11 +146,11 @@ export default function App({ controller }: { controller: PopupController }) {
           message: 'На странице не нашлось текста политики — вставьте его вручную.',
         });
       })
-      .catch(() =>
-        dispatch({
+      .catch(() => {
+        if (version === generation.current) dispatch({
           type: 'notice/set',
           message: 'Не удалось прочитать страницу — вставьте текст вручную.',
-        }),
+        }); },
       );
   }, [controller]);
 
@@ -160,6 +187,7 @@ export default function App({ controller }: { controller: PopupController }) {
         <section className="card" aria-labelledby="unsupported-heading">
           <h2 id="unsupported-heading">Проверка недоступна</h2>
           <p>{UNSUPPORTED_TEXT[unsupported]}</p>
+          {unsupported === 'changed' ? <ActionButton onClick={preparePage}>Обновить контекст проверки</ActionButton> : null}
         </section>
       ) : (
         <>

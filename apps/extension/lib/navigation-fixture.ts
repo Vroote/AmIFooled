@@ -1,5 +1,5 @@
 /**
- * Stand-in for the API client until issue #6 wires the real transport.
+ * Synthetic provider for the separate navigation-smoke extension only.
  *
  * It answers with synthetic data only for reserved demo hosts and for the local test
  * fixture. Every other site gets "unavailable", so a real service is never given an
