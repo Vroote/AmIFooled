@@ -22,17 +22,23 @@ from .validate import verify_all
 MIN_PROVIDER_SECONDS = 1.0
 
 NO_EVIDENCE_SUMMARY = (
-    "Наблюдений со страницы нет, поэтому сверить обещания политики с поведением сайта "
-    "не удалось. Политика прочитана, но вывод по ней не делается."
+    "Наблюдений со страницы нет: сопоставить условия с поведением сайта не удалось. "
+    "Детерминированные правила не оценивают условия документа отдельно от наблюдений."
 )
 NO_EVIDENCE_LIMITATION = (
-    "Без наблюдений страницы проверка сравнивает только текст с самим собой: "
-    "запустите проверку на открытой странице сайта."
+    "Поведение сайта не проверено: доступны только условия переданного документа. "
+    "Для сравнения с наблюдениями запустите проверку на открытой странице сайта."
 )
 PROVIDER_FAILED_LIMITATION = (
-    "Языковая модель не ответила вовремя или вернула непроверяемый результат, поэтому "
+    "Языковая модель недоступна или вернула непроверяемый результат, поэтому "
     "показаны только детерминированные правила."
 )
+PROVIDER_FAILURE_REASONS = {
+    "authentication": "DeepSeek не принял серверный ключ API (401).",
+    "balance": "DeepSeek сообщил о недостаточном балансе API (402).",
+    "rate_limit": "Провайдер ограничил частоту запросов (429); автоматических повторов нет.",
+    "timeout": "Превышено время ожидания провайдера; запрос отменён.",
+}
 PROVIDER_DROPPED_LIMITATION = (
     "Часть ответов модели отброшена: цитата не найдена в политике или указанные "
     "наблюдения не передавались."
@@ -42,19 +48,29 @@ RULES_ONLY_LIMITATION = (
 )
 
 
-def _summary(findings: list[Finding], observed: bool) -> str:
+def _summary(findings: list[Finding], observed: bool, mode: str) -> str:
     if not observed:
+        if findings:
+            return (
+                f"В тексте найдено {len(findings)} условие(й) для проверки. "
+                "Поведение сайта не проверено; замечания относятся только к документу."
+            )
+        if mode == "llm":
+            return (
+                "Модель не выделила рисков в переданном тексте. Поведение сайта не проверено; "
+                "это не заключение о безопасности сайта или полноте документа."
+            )
         return NO_EVIDENCE_SUMMARY
     if not findings:
         return (
-            "Противоречий между переданной политикой и наблюдениями по текущим правилам "
-            "не найдено. Это не заключение о безопасности сайта."
+            "По переданному тексту и ограниченным наблюдениям сигналов не найдено. "
+            "Это не заключение о безопасности сайта."
         )
     warnings = sum(1 for finding in findings if finding.severity == "warning")
     if warnings:
         return (
-            f"Нашлось {warnings} расхождение(й) между тем, что обещает политика, и тем, что "
-            "видно на странице. Каждое расхождение — повод проверить, не доказанное нарушение."
+            f"Найдено {warnings} условие(й) или наблюдение(й), требующих внимания. "
+            "Каждый сигнал — повод проверить детали, не доказанное нарушение."
         )
     return (
         "Явных противоречий нет, но есть места, которые стоит сверить с политикой самостоятельно."
@@ -77,7 +93,11 @@ def analyze_policy(
 
     outcome = rules.evaluate(request)
     findings = verify_all(outcome.findings, request, allow_missing_quote=True)
-    limitations = list(outcome.limitations)
+    limitations = [*outcome.limitations, rules.NO_SIGNAL_LIMITATION]
+    if any(item.kind == "visible_cookie_count" for item in request.evidence):
+        limitations.append(rules.COOKIE_COUNT_LIMITATION)
+    if any(item.kind == "resource_domain" for item in request.evidence):
+        limitations.append(rules.THIRD_PARTY_LIMITATION)
     mode: str = "rules"
 
     if provider is None:
@@ -91,13 +111,17 @@ def analyze_policy(
                 proposed = request_findings(
                     request, provider, timeout_seconds=remaining, client=client
                 )
-            except ProviderError:
+            except ProviderError as error:
                 limitations.append(PROVIDER_FAILED_LIMITATION)
+                if detail := PROVIDER_FAILURE_REASONS.get(error.reason):
+                    limitations.append(detail)
             else:
-                mode = "llm"
                 verified = verify_all(proposed, request, allow_missing_quote=False)
+                mode = "llm" if not proposed or verified else "rules"
                 if len(verified) < len(proposed):
                     limitations.append(PROVIDER_DROPPED_LIMITATION)
+                if proposed and not verified:
+                    limitations.append(PROVIDER_FAILED_LIMITATION)
                 known = {(item.title.casefold(), item.policy_quote.casefold()) for item in findings}
                 findings.extend(
                     item
@@ -116,7 +140,7 @@ def analyze_policy(
         hostname=request.hostname,
         status=status,  # type: ignore[arg-type]
         mode=mode,  # type: ignore[arg-type]
-        summary=_summary(findings, outcome.observed_facts),
+        summary=_summary(findings, outcome.observed_facts, mode),
         findings=findings,
         limitations=_dedupe(limitations),
     )

@@ -45,7 +45,7 @@ def build_request(policy: str = POLICY) -> AnalysisRequest:
 
 
 def completion(content: str) -> dict:
-    return {"choices": [{"message": {"content": content}}]}
+    return {"choices": [{"finish_reason": "stop", "message": {"content": content}}]}
 
 
 def stub_client(handler) -> httpx.AsyncClient:
@@ -178,7 +178,8 @@ def test_provider_http_error_and_invalid_json_fall_back_to_rules():
 
 def test_parse_findings_rejects_unexpected_shapes():
     assert parse_findings(json.dumps({"findings": []})) == []
-    assert parse_findings(json.dumps({"other": 1})) == []
+    with pytest.raises(ProviderError):
+        parse_findings(json.dumps({"other": 1}))
     with pytest.raises(ProviderError):
         parse_findings("[]")
     with pytest.raises(ProviderError):
