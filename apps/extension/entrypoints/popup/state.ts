@@ -21,6 +21,8 @@ export type RequestFailureKind =
   | 'too_large'
   | 'server'
   | 'malformed'
+  | 'page_changed'
+  | 'unsupported_page'
   | 'unknown';
 
 export interface RequestFailure {
@@ -28,7 +30,7 @@ export interface RequestFailure {
   status?: number;
 }
 
-export type UnsupportedReason = 'restricted' | 'no-tab' | 'scheme';
+export type UnsupportedReason = 'restricted' | 'no-tab' | 'scheme' | 'changed';
 
 export type PageContext =
   | { status: 'ready'; hostname: string }
@@ -37,6 +39,7 @@ export type PageContext =
 export interface PreparedContext {
   page: PageContext;
   evidence: Evidence[];
+  notices?: string[];
 }
 
 export type CardState<T> =
@@ -56,6 +59,7 @@ export interface PopupState {
 }
 
 export type PopupAction =
+  | { type: 'page/started' }
   | { type: 'page/resolved'; prepared: PreparedContext }
   | { type: 'page/failed'; reason: UnsupportedReason }
   | { type: 'policy/changed'; text: string }
@@ -93,15 +97,18 @@ function belongsToCurrentPage(state: PopupState, hostname: string): boolean {
 
 export function reducer(state: PopupState, action: PopupAction): PopupState {
   switch (action.type) {
+    case 'page/started':
+      return { ...initialState };
     case 'page/resolved':
       return {
-        ...state,
+        ...initialState,
         page: { phase: 'ready', context: action.prepared.page },
         evidence: action.prepared.evidence,
+        notice: action.prepared.notices?.join(' ') ?? null,
       };
     case 'page/failed':
       return {
-        ...state,
+        ...initialState,
         page: { phase: 'ready', context: { status: 'unsupported', reason: action.reason } },
         evidence: [],
       };
