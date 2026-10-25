@@ -15,45 +15,66 @@
   Auto-add sub-issues to project, Auto-close issue, Item added to project, Item closed,
   Pull request linked to issue и Pull request merged. Эти настройки сохранены;
   точные фильтры и целевые поля/статусы API не раскрывает, их нужно проверить владельцу.
-- Rulesets при проверке отсутствовали. Чтение branch protection вернуло 404 при роли
-  без Admin; это не доказывает отсутствия старого branch protection.
+- Rulesets при проверке setup отсутствовали. Чтение branch protection вернуло 404 при роли
+  без Admin; это не доказывало отсутствия старого branch protection.
 - Попытка создать отдельный additive ruleset через POST `/repos/Vroote/AmIFooled/rulesets`
-  также вернула **404**. Защита и обязательный approve **не включены этим setup**:
-  подтверждённых Admin-прав у текущего аккаунта нет. Секретов Actions в repo пока нет.
+  вернула под Write **404**. Защита **не была включена setup**: подтверждённых Admin-прав
+  у `DREdward-chell` нет. Секретов Actions в repo не было.
+- Перепроверено под Admin в #10: `rulesets` отдавал пустой список, а
+  `branches/main/protection` — «Branch not protected». Старой классической защиты не было,
+  прошлый 404 объяснялся только правами. Применён additive ruleset, см. раздел ниже.
 
-## Защита main — задача владельцу #10
+## Защита main — включена в #10
 
-После первого успешного CI применить из корня repo **под Admin**:
-
-Предпочтительный additive вариант (создать один раз, не меняет старые защиты):
+Ruleset `AmIFooled main review and CI`, id **25818867**, создан под Admin (`Vroote`)
+25 октября 2026 из `.github/ruleset.json` после первого успешного `ci` на main `6178c84`:
 
 ```sh
 gh api --method POST repos/Vroote/AmIFooled/rulesets --input .github/ruleset.json
 ```
 
-Или классический branch protection:
+Применён additive POST, а не PUT: он не заменяет существующие настройки. Классический
+`.github/branch-protection.json` остаётся резервным вариантом на случай, если ruleset
+придётся пересоздавать:
 
 ```sh
 gh api --method PUT repos/Vroote/AmIFooled/branches/main/protection --input .github/branch-protection.json
 ```
 
-Сначала прочитать существующие настройки: PUT заменяет конфигурацию. Если появились более
-строгие правила, сохранить их и добавить только недостающее. Наш JSON предназначен для
-первоначальной настройки, не для ослабления существующей защиты.
+Перед PUT читать существующие настройки: он заменяет конфигурацию целиком. Если появились
+более строгие правила, сохранить их и добавить только недостающее. Наши JSON предназначены
+для первоначальной настройки, не для ослабления существующей защиты.
 
-Результат: PR-only, **1 approve**, stale approvals dismissed, required `ci` с актуальной
-main, resolved conversations, linear history, без force push/delete, включая администраторов.
-Code owners не обязательны. До появления check `ci` не угадывать другое имя job.
+Действует на `refs/heads/main`: PR-only, **1 approve**, stale approvals dismissed,
+required `ci` со strict-политикой актуальной main, resolved conversations, linear history,
+запрет deletion и non-fast-forward. `bypass_actors` пуст, API отвечает
+`current_user_can_bypass: never` — Admin тоже не обходит правила. Code owners не требуются.
 
-В Settings → General: разрешить squash merge; по желанию auto-delete branches и auto-merge.
-Auto-merge можно включать только после реальной защиты, иначе нет обязательного review gate.
-Не обходить правила `--admin`. Если тариф владельца не поддерживает protection для приватного
-repo, зафиксировать это в #10: не менять видимость или тариф без отдельного решения.
+GitHub добавил к `pull_request` собственный параметр по умолчанию
+`require_extra_approval_for_unattributed_changes: true`; он записан в `.github/ruleset.json`,
+чтобы файл совпадал с сервером. Для commits, автор которых не связан с GitHub-аккаунтом,
+это может потребовать второй approve вместо согласованного одного. Если PR неожиданно
+просит два approve — причина здесь; снимать параметр только решением владельца, PATCH
+на `rulesets/25818867`, с записью в этом файле.
+
+### Проверено на реальном PR
+
+PR [#12](https://github.com/Vroote/AmIFooled/pull/12) при зелёных `ci`/`backend`/`extension`/
+`process` и `mergeable: MERGEABLE` отдаёт `mergeStateStatus: BLOCKED` и
+`reviewDecision: REVIEW_REQUIRED`. Approval gate работает на стороне GitHub, а не только
+в `merge-pr.py`. Проверка выполнена чтением состояния PR; чужой PR для теста не мерджился.
+
+Settings → General проверены: squash merge разрешён, merge commit и rebase тоже доступны,
+но linear history отклонит merge commit. Auto-merge **выключен** и в #10 не включался:
+включать его — отдельное решение владельца. Auto-delete branches выключен; `merge-pr.py`
+передаёт `--delete-branch` сам. Правила не обходить через `--admin`.
 
 GitHub [документирует ограничения protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches):
-приватным репозиториям может понадобиться платный план. Write позволяет issues/PR,
-но не изменение правил. До #10 скрипт `merge-pr.py` проверяет review/CI/current HEAD/threads,
-однако участник всё ещё может обойти его вручную — это **не серверное enforcement**.
+приватным репозиториям может понадобиться платный план. Здесь ограничение не возникло —
+POST ruleset прошёл на текущем тарифе; видимость и тариф не менялись. Write позволяет
+issues/PR, но не изменение правил. `merge-pr.py` остаётся полезной предварительной
+проверкой review/CI/current HEAD/threads, но теперь **не единственным** барьером:
+прямой push и merge без approve отклоняет сам GitHub.
 
 ## Project sync
 
@@ -63,6 +84,14 @@ GitHub [документирует ограничения protected branches](ht
 gh auth refresh -h github.com -s project
 python3 scripts/project-sync.py --init-fields
 ```
+
+Статус на момент #10: Actions secrets пусты, `PROJECT_TOKEN` **не установлен**, поэтому
+workflow только пишет сообщение в summary и ничего не синхронизирует; его успешный
+результат не означает обновление доски. OAuth token этой сессии не имеет scope
+`read:project`, так что `gh project` и `project-sync.py` до `gh auth refresh` не работают —
+scope расширяет владелец сам, в repo токены не сохраняются. Встроенные Project workflows
+остаются включёнными с момента setup; их точные фильтры и целевые статусы API не раскрывает,
+это по-прежнему ручная проверка владельца в Project → Workflows.
 
 `--init-fields` только добавляет отсутствующие поля; повторный запуск не дублирует items.
 Обычный `project-sync.py` обновляет Status и плановые поля; сохраните эту семантику,
