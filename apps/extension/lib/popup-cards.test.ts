@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
+import SiteStats from '../components/SiteStats';
 import BreachesCard from '../components/BreachesCard';
 import AnalysisCard from '../components/AnalysisCard';
 import type { BreachesResponse } from '../entrypoints/popup/state';
@@ -55,4 +56,27 @@ it('labels a document-only warning as requiring attention rather than an observe
   expect(html).toContain('Требует внимания');
   expect(html).not.toContain('Расхождение');
   expect(html).toContain('Поведение сайта не проверено');
+});
+
+
+it('shows local cookies and leaves unrequested breaches unknown', () => {
+  const html = renderToStaticMarkup(createElement(SiteStats, {
+    evidence: [{ id: 'cookie-count', kind: 'visible_cookie_count', value: '12', limitation: 'No HttpOnly' }],
+    breaches: { phase: 'idle' }, canCheck: true, onCheck: () => {},
+  }));
+  expect(html).toContain('>12</p>');
+  expect(html).toContain('>—</p>');
+  expect(html).toContain('Доступны странице');
+  expect(html).toContain('Ещё не проверены');
+});
+
+it('distinguishes zero visible cookies from missing or malformed evidence', () => {
+  for (const value of [null, 'unknown', '-1', '0']) {
+    const html = renderToStaticMarkup(createElement(SiteStats, {
+      evidence: value === null ? [] : [{ id: 'cookies', kind: 'visible_cookie_count', value, limitation: '' }],
+      breaches: { phase: 'ok', data: unavailable }, canCheck: true, onCheck: () => {},
+    }));
+    expect(html.includes('>0</p>')).toBe(value === '0');
+    expect(html).toContain('Число неизвестно');
+  }
 });

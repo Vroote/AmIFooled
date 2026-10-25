@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, createElement } from 'react';
+import { act, createElement, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import App from '../entrypoints/popup/App';
@@ -29,7 +29,7 @@ const controller = (): PopupController => ({
   async analyze() { return response; },
   async checkBreaches() { throw new Error('unused'); },
 });
-const button = (text: string) => [...host.querySelectorAll('button')].find((item) => item.textContent?.trim() === text)!;
+const button = (text: string) => [...host.querySelectorAll('button')].find((item) => (item.getAttribute('aria-label') ?? item.textContent?.trim()) === text)!;
 async function typeUrl(text: string) {
   await act(async () => {
     const input = host.querySelector('input')!;
@@ -38,16 +38,21 @@ async function typeUrl(text: string) {
   });
 }
 
-it('discovers on open, shows source and preview, never asks for pasted text or automatically analyzes', async () => {
-  const adapter = controller(); adapter.analyze = vi.fn(adapter.analyze); adapter.discoverPolicy = vi.fn(adapter.discoverPolicy!);
+it('discovers only on click, shows source and preview, never asks for pasted text or automatically analyzes', async () => {
+  const adapter = controller(); adapter.analyze = vi.fn(adapter.analyze); adapter.discoverPolicy = vi.fn(adapter.discoverPolicy!); adapter.checkBreaches = vi.fn(adapter.checkBreaches);
   await act(async () => root.render(createElement(App, { controller: adapter })));
+  expect(adapter.discoverPolicy).not.toHaveBeenCalled();
+  expect(adapter.checkBreaches).toHaveBeenCalledOnce();
+  expect(adapter.checkBreaches).toHaveBeenCalledWith('example.com', expect.any(AbortSignal));
+  expect(host.querySelector('input')).toBeNull();
+  await act(async () => button('Найти соглашение').click());
   expect(adapter.discoverPolicy).toHaveBeenCalledOnce();
   expect(adapter.analyze).not.toHaveBeenCalled();
   expect(host.querySelector('textarea')).toBeNull();
   expect(host.querySelector('input')).toBeNull();
   expect(host.querySelector('a[href="https://example.com/terms"]')).not.toBeNull();
   expect(host.textContent).toContain('Public policy.');
-  await act(async () => button('Отправить и сверить').click());
+  await act(async () => button('Проверить').click());
   expect(adapter.analyze).toHaveBeenCalledOnce();
 });
 
@@ -55,11 +60,12 @@ it('requires re-confirmation if a controller returns text needing sanitization',
   const adapter = controller(); adapter.analyze = vi.fn(adapter.analyze);
   adapter.discoverPolicy = async () => ready('Contact user@example.com for details.');
   await act(async () => root.render(createElement(App, { controller: adapter })));
-  await act(async () => button('Отправить и сверить').click());
+  await act(async () => button('Найти соглашение').click());
+  await act(async () => button('Проверить').click());
   expect(adapter.analyze).not.toHaveBeenCalled();
   expect(host.textContent).toContain('Contact [email скрыт] for details.');
   expect(host.textContent).toContain('нажмите отправку ещё раз');
-  await act(async () => button('Отправить и сверить').click());
+  await act(async () => button('Проверить').click());
   expect(adapter.analyze).toHaveBeenCalledOnce();
 });
 
@@ -68,6 +74,7 @@ it('fallback takes only a URL; validation is inline and failures retain the URL 
   adapter.discoverPolicy = async () => missing;
   adapter.loadPolicy = vi.fn().mockResolvedValue({ ...missing, problem: 'network' });
   await act(async () => root.render(createElement(App, { controller: adapter })));
+  await act(async () => button('Найти соглашение').click());
   await typeUrl('http://127.0.0.1/secret');
   await act(async () => button('Загрузить по ссылке').click());
   expect(adapter.loadPolicy).not.toHaveBeenCalled();
@@ -85,6 +92,7 @@ it('permission is requested only from its explicit button, with a recoverable de
   adapter.discoverPolicy = async () => ({ ...missing, problem: 'permission', url: 'https://other.com/terms' });
   adapter.loadPolicy = vi.fn().mockResolvedValue({ ...missing, problem: 'denied', url: 'https://other.com/terms' });
   await act(async () => root.render(createElement(App, { controller: adapter })));
+  await act(async () => button('Найти соглашение').click());
   expect(adapter.loadPolicy).not.toHaveBeenCalled();
   await act(async () => button('Разрешить доступ и загрузить').click());
   expect(adapter.loadPolicy).toHaveBeenCalledWith('https://other.com/terms', expect.any(AbortSignal), true);
@@ -99,10 +107,12 @@ it('changing the document clears old analysis while retaining the independent br
     source: 'fixture', stale: false, checked_at: '2026-10-25T10:00:00Z', attribution_url: 'https://haveibeenpwned.com/',
   });
   await act(async () => root.render(createElement(App, { controller: adapter })));
-  await act(async () => button('Отправить и сверить').click());
+  await act(async () => button('Найти соглашение').click());
+  await act(async () => button('Проверить').click());
   await act(async () => button('Проверить утечки сайта').click());
   expect(host.textContent).toContain('Current result');
-  await act(async () => button('Выбрать другой документ').click());
+  expect(button('Вставить свою ссылку').closest('details')).toBeNull();
+  await act(async () => button('Вставить свою ссылку').click());
   await typeUrl('https://example.com/cookies');
   await act(async () => button('Загрузить по ссылке').click());
   expect(host.textContent).not.toContain('Current result');
@@ -113,7 +123,8 @@ it('ends loading on timeout even when an analysis adapter ignores AbortSignal', 
   vi.useFakeTimers();
   const adapter = controller(); adapter.analyze = () => new Promise(() => {});
   await act(async () => root.render(createElement(App, { controller: adapter })));
-  await act(async () => button('Отправить и сверить').click());
+  await act(async () => button('Найти соглашение').click());
+  await act(async () => button('Проверить').click());
   expect(host.textContent).toContain('Сверяю…');
   await act(async () => vi.advanceTimersByTimeAsync(20_000));
   expect(host.textContent).toContain('Проверка не успела завершиться');
@@ -126,6 +137,7 @@ it('times out discovery and ignores its late answer after a successful manual re
   let finish!: (value: PolicyResult) => void;
   adapter.discoverPolicy = () => new Promise((resolve) => { finish = resolve; });
   await act(async () => root.render(createElement(App, { controller: adapter })));
+  await act(async () => button('Найти соглашение').click());
   expect(host.textContent).toContain('Ищу и загружаю');
   await act(async () => vi.advanceTimersByTimeAsync(18_000));
   expect(host.textContent).toContain('Загрузка заняла слишком много времени');
@@ -143,7 +155,8 @@ it('invalidates and drops late analysis even when the new document has the same 
   let finish!: (value: typeof response) => void;
   adapter.analyze = () => new Promise((resolve) => { finish = resolve; });
   await act(async () => root.render(createElement(App, { controller: adapter })));
-  await act(async () => button('Отправить и сверить').click());
+  await act(async () => button('Найти соглашение').click());
+  await act(async () => button('Проверить').click());
   await act(async () => invalidate());
   expect(host.textContent).toContain('Обновить контекст проверки');
   await act(async () => button('Обновить контекст проверки').click());
@@ -159,8 +172,72 @@ it('cancels document loading on navigation and never displays the old document',
   adapter.subscribeInvalidation = (listener) => { invalidate = listener; return () => {}; };
   adapter.discoverPolicy = (s) => { signal = s; return new Promise((resolve) => { finish = resolve; }); };
   await act(async () => root.render(createElement(App, { controller: adapter })));
+  await act(async () => button('Найти соглашение').click());
   await act(async () => invalidate());
   expect(signal.aborted).toBe(true);
   await act(async () => finish(ready('STALE POLICY')));
   expect(host.textContent).not.toContain('STALE POLICY');
+});
+
+
+it('keeps collector limitations collapsed but sanitization confirmation visible', async () => {
+  const adapter = controller();
+  adapter.prepare = async () => ({page: {status: 'ready', hostname: 'example.com'}, evidence: [], notices: ['Collector limits']});
+  await act(async () => root.render(createElement(App, {controller: adapter})));
+  const details = [...host.querySelectorAll('details')].find((item) => item.textContent?.includes('Collector limits'));
+  expect(details).toBeDefined();
+  expect(details?.open).toBe(false);
+});
+
+
+it('accepts a custom policy URL immediately without discovery or automatic analysis', async () => {
+  const adapter = controller();
+  adapter.discoverPolicy = vi.fn(adapter.discoverPolicy!);
+  adapter.loadPolicy = vi.fn(adapter.loadPolicy!);
+  adapter.analyze = vi.fn(adapter.analyze);
+  await act(async () => root.render(createElement(App, {controller: adapter})));
+  await act(async () => button('Вставить свою ссылку').click());
+  expect(document.activeElement).toBe(host.querySelector('input'));
+  await typeUrl('https://example.com/custom-terms');
+  await act(async () => button('Загрузить по ссылке').click());
+  expect(adapter.discoverPolicy).not.toHaveBeenCalled();
+  expect(adapter.loadPolicy).toHaveBeenCalledWith('https://example.com/custom-terms', expect.any(AbortSignal), false);
+  expect(adapter.analyze).not.toHaveBeenCalled();
+  expect(button('Проверить')).toBeDefined();
+  expect(host.querySelector('textarea')).toBeNull();
+});
+
+
+it('auto-checks breaches once in StrictMode and keeps the manual retry without auto-retry loops', async () => {
+  const adapter = controller();
+  adapter.checkBreaches = vi.fn(adapter.checkBreaches);
+  await act(async () => root.render(createElement(StrictMode, null, createElement(App, {controller: adapter}))));
+  expect(adapter.checkBreaches).toHaveBeenCalledOnce();
+  await act(async () => button('Найти соглашение').click());
+  expect(adapter.checkBreaches).toHaveBeenCalledOnce();
+  await act(async () => button('Проверить утечки сайта').click());
+  expect(adapter.checkBreaches).toHaveBeenCalledTimes(2);
+});
+
+it('does not auto-check breaches on unsupported pages', async () => {
+  const adapter = controller();
+  adapter.prepare = async () => ({page: {status: 'unsupported', reason: 'restricted'}, evidence: []});
+  adapter.checkBreaches = vi.fn(adapter.checkBreaches);
+  await act(async () => root.render(createElement(App, {controller: adapter})));
+  expect(adapter.checkBreaches).not.toHaveBeenCalled();
+});
+
+it('aborts the automatic breach check and discards a late answer after navigation', async () => {
+  const adapter = controller();
+  let invalidate = () => {};
+  let finish!: (value: Awaited<ReturnType<PopupController['checkBreaches']>>) => void;
+  let signal!: AbortSignal;
+  adapter.subscribeInvalidation = (listener) => {invalidate = listener; return () => {};};
+  adapter.checkBreaches = (_hostname, s) => {signal = s; return new Promise((resolve) => {finish = resolve;});};
+  await act(async () => root.render(createElement(App, {controller: adapter})));
+  await act(async () => invalidate());
+  expect(signal.aborted).toBe(true);
+  await act(async () => finish({hostname: 'example.com', matched_domain: 'example.com', status: 'not_found', count: 0, breaches: [], source: 'fixture', stale: false, checked_at: '2026-10-25T10:00:00Z', attribution_url: 'https://haveibeenpwned.com/'}));
+  expect(host.textContent).not.toContain('Совпадений в HIBP нет');
+  expect(host.textContent).toContain('Обновить контекст проверки');
 });

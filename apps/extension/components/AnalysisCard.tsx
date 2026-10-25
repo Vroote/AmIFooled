@@ -27,8 +27,7 @@ function FindingItem({ finding, evidence }: { finding: Finding; evidence: Eviden
   const cited = evidence.filter((item) => finding.evidence_ids.includes(item.id));
   return (
     <li className={`finding finding--${finding.severity}`}>
-      <p className="finding__severity">{SEVERITY_TEXT[finding.severity]}</p>
-      <h3 className="finding__title">{finding.title}</h3>
+<details><summary><span className="finding__severity">{SEVERITY_TEXT[finding.severity]}</span><span className="finding__title">{finding.title}</span></summary><div className="finding__detail">
       <p>{finding.explanation}</p>
       {finding.policy_quote ? (
         <blockquote className="finding__quote">{finding.policy_quote}</blockquote>
@@ -47,25 +46,18 @@ function FindingItem({ finding, evidence }: { finding: Finding; evidence: Eviden
           ))}
         </ul>
       ) : null}
+      </div></details>
     </li>
   );
 }
 
 export default function AnalysisCard({ state, evidence, canRetry, onRetry }: Props) {
-  if (state.phase === 'idle') {
-    return (
-      <CardShell id="analysis" title="Сверка обещаний и наблюдений" status="Ещё не запускалась">
-        <p className="muted">
-          Дождитесь загрузки документа выше, проверьте источник и нажмите «Отправить и сверить».
-        </p>
-      </CardShell>
-    );
-  }
+  if (state.phase === 'idle') return null;
 
   if (state.phase === 'loading') {
     return (
-      <CardShell id="analysis" title="Сверка обещаний и наблюдений" status="Сверяю…">
-        <p className="muted">Сравниваю текст соглашения с наблюдениями страницы.</p>
+      <CardShell id="analysis" title="Краткая сводка" status="Сверяю…">
+        <p className="muted">Сравниваю условия с наблюдениями страницы.</p>
       </CardShell>
     );
   }
@@ -74,7 +66,7 @@ export default function AnalysisCard({ state, evidence, canRetry, onRetry }: Pro
     return (
       <CardShell
         id="analysis"
-        title="Сверка обещаний и наблюдений"
+        title="Краткая сводка"
         status="Сверка не выполнена"
         footer={
           canRetry ? (
@@ -85,42 +77,34 @@ export default function AnalysisCard({ state, evidence, canRetry, onRetry }: Pro
         }
       >
         <p>{FAILURE_TEXT[state.failure.kind]}</p>
-        <p className="muted">Утечки сайта проверяются отдельно и этой ошибкой не затронуты.</p>
       </CardShell>
     );
   }
 
   const { data } = state;
-  const status = `${ANALYSIS_STATUS_TEXT[data.status]} · ${ANALYSIS_MODE_TEXT[data.mode]}`;
+  const status = `${ANALYSIS_STATUS_TEXT[data.status]}${data.mode === 'fixture' ? ' · демо' : ''}`;
+  const summary = data.summary.length > 220 ? `${data.summary.slice(0, 220).replace(/\s+\S*$/, '')}…` : data.summary;
 
   return (
-    <CardShell id="analysis" title="Сверка обещаний и наблюдений" status={status}>
-      <p>{data.summary}</p>
+    <CardShell id="analysis" title="Краткая сводка" status={status}>
+      {summary === data.summary ? <p className="analysis-summary">{summary}</p> : <details className="summary-detail"><summary>{summary}</summary><p>{data.summary}</p></details>}
       {data.status === 'unavailable' ? (
         <p className="muted">
           Результат сверки недоступен. Это не означает, что расхождений нет.
         </p>
       ) : data.findings.length > 0 ? (
         <ul className="finding__list">
-          {data.findings.map((finding, index) => (
+          {data.findings.slice(0, 3).map((finding, index) => (
             <FindingItem key={`${finding.title}-${index}`} finding={finding} evidence={evidence} />
           ))}
         </ul>
       ) : (
         <p className="muted">
-          По текущим правилам расхождений нет. Это не заключение о безопасности сайта.
+          {data.status === 'insufficient_data' ? 'Для сравнения с поведением сайта недостаточно наблюдений.' : 'По текущим правилам расхождений нет. Это не заключение о безопасности сайта.'}
         </p>
       )}
-      {data.limitations.length > 0 ? (
-        <>
-          <h3 className="limits__title">Что эта проверка не доказывает</h3>
-          <ul className="limits">
-            {data.limitations.map((limitation) => (
-              <li key={limitation}>{limitation}</li>
-            ))}
-          </ul>
-        </>
-      ) : null}
+      {data.findings.length > 3 && data.status !== 'unavailable' ? <details className="extra-findings"><summary>Ещё замечания · {data.findings.length - 3}</summary><ul className="finding__list">{data.findings.slice(3).map((finding, index) => <FindingItem key={index} finding={finding} evidence={evidence} />)}</ul></details> : null}
+      <details className="analysis-limits"><summary>Как читать результат</summary><p className="field__hint">Метод: {ANALYSIS_MODE_TEXT[data.mode]}. Замечания не доказывают нарушение.</p><ul className="limits">{data.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul></details>
     </CardShell>
   );
 }

@@ -1,6 +1,6 @@
 {
   "profile": "product-admin",
-  "sourceRoots": ["apps/extension/entrypoints", "apps/extension/styles"],
+  "sourceRoots": ["apps/extension/entrypoints", "apps/extension/components", "apps/extension/styles"],
   "locale": "ru-RU",
   "canonicalMap": "DESIGN.md",
   "requiredCapabilities": ["Scrollbar"],

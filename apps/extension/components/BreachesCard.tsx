@@ -27,31 +27,14 @@ function statusLine(data: BreachesResponse): string {
   return `Известных инцидентов: ${data.count ?? 0}`;
 }
 
-export default function BreachesCard({ state, hostname, canCheck, onCheck }: Props) {
+export default function BreachesCard({ state, canCheck, onCheck }: Props) {
   const checkButton = (again: boolean) => (
     <ActionButton variant="secondary" onClick={onCheck} disabled={!canCheck}>
       {again ? 'Проверить заново' : 'Проверить утечки сайта'}
     </ActionButton>
   );
 
-  if (state.phase === 'idle') {
-    return (
-      <CardShell id="breaches" title="Известные утечки сайта" status="Ещё не запускалась" footer={checkButton(false)}>
-        <p className="muted">
-          На сервер уйдёт только имя сайта{hostname ? `: ${hostname}` : ''}. Ваши адреса и пароли
-          не проверяются и не отправляются.
-        </p>
-      </CardShell>
-    );
-  }
-
-  if (state.phase === 'loading') {
-    return (
-      <CardShell id="breaches" title="Известные утечки сайта" status="Проверяю каталог…">
-        <p className="muted">Запрос по имени сайта отправлен.</p>
-      </CardShell>
-    );
-  }
+  if (state.phase === 'idle' || state.phase === 'loading') return null;
 
   if (state.phase === 'failed') {
     return (
