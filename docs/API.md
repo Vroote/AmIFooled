@@ -6,13 +6,13 @@
 | Endpoint | Реализовано в setup | Контракт feature |
 |---|---|---|
 | GET /health | 200 status=ok | Без внешних зависимостей |
-| POST /v1/analyze | 501 после валидации запроса | hostname, policy_text, evidence → summary/findings/limitations/mode |
+| POST /v1/analyze | Rules + optional LLM | hostname, policy_text, evidence → summary/findings/limitations/mode |
 | GET /v1/breaches?hostname=... | HIBP public catalogue | matched_domain, breaches, count/status/source/checked_at |
 
 Pydantic запрещает лишние поля. Политика ограничена 20 000 символов, факты — 100 элементами.
 GET /v1/breaches нормализует DNS/IDNA/PSL, включая private suffixes, и принимает до 254
 символов query hostname с завершающей точкой; ответ содержит ASCII hostname до 253 символов.
-Для analyze полная проверка hostname и лимит HTTP body остаются AC #3. Клиент проверяет
+Для analyze hostname ограничен базовым regex, тело запроса — 256 KiB до JSON parsing. Клиент проверяет
 схему неизвестных сетевых данных; TS тип не заменяет
 runtime validation. Не добавлять URL-fetch endpoint: так избегаем crawler/SSRF в scope MVP.
 
@@ -28,6 +28,9 @@ Finding содержит точную подстроку политики и IDs
 Сопоставление домена, кэш, fixture mode и проверка HIBP: [BREACHES.md](BREACHES.md).
 
 Ключ LLM живёт на сервере. Backend работает локально на loopback, тело запросов не логируется.
+Опциональный провайдер ограничен общим отменяемым deadline в оставшемся бюджете анализа
+(не более 15 секунд на анализ) и ответом до 128 KiB. Ошибки формата, таймаут и превышение
+размера оставляют rules с пояснением; finding с любым неизвестным evidence ID отклоняется целиком.
 Для публичного deployment отдельно нужны auth/quotas/rate limiting/HTTPS; публичный сервис
 не является условием шестичасового MVP. Политика отправляется только после подтверждения
 пользователем, автоматический режим утечек отправляет только hostname после opt-in.
