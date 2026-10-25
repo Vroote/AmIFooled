@@ -19,7 +19,6 @@ typography:
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
 rounded:
   panel: "16px"
-  popup: "22px"
 spacing:
   page: "20px"
   section: "16px"
@@ -51,7 +50,7 @@ North Star — небольшой прибор для проверки сайт�
 
 `apps/extension/styles/base.css` — canonical runtime (Model B). DESIGN.md отражает его
 семантические токены: `colors.X → --color-X`, `typography.display/body → --font-display/body`,
-`rounded.panel/popup → --radius-panel/popup`, `spacing.page/section → --space-page/section`.
+`rounded.panel → --radius-panel`, `spacing.page/section → --space-page/section`.
 При изменении CSS обновлять этот документ; отдельный ThemeProvider/token pipeline не нужен.
 Потребители — popup и notice. Не дублировать эти значения в локальных стилях компонентов.
 
@@ -76,10 +75,8 @@ Body 14px/1.5, заголовок сайта 22px/1.25, счётчик 34px с t
 Popup шириной 400px, min-width 320px, max-width 100vw. Две колонки счётчиков сохраняются
 на 320px. Поля 20px, ниже 360px — 16px. Между разделами 16px. Начальный экран содержит
 сайт, счётчики, поиск и свёрнутые настройки. После загрузки документа — источник и кнопка
-проверки; после ответа — сводка. Общий контейнер popup скруглён на 22px и ограничен 600px по высоте; длинный результат
-прокручивается внутри него, сохраняя скругления сверху/снизу. Прозрачные html/body не
-закрашивают углы прямоугольным фоном; нативная рамка окна остаётся под управлением Chrome.
-Дополнительная прокрутка только у ограниченного 180px read-only текста документа.
+проверки; после ответа — сводка. Естественный вертикальный scroll для длинных результатов.
+Никаких вложенных прокруток, кроме ограниченного 180px read-only текста документа.
 
 ## Elevation & Depth
 
