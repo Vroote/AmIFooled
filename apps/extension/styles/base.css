@@ -11,6 +11,7 @@
   --font-display: 'Avenir Next', 'Trebuchet MS', sans-serif;
   --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --radius-panel: 16px;
+  --radius-popup: 22px;
   --space-page: 20px;
   --space-section: 16px;
   --scrollbar-thumb: var(--color-muted);
@@ -18,7 +19,7 @@
   --scrollbar-hover: var(--color-primary);
   --scrollbar-active: var(--color-text);
   color: var(--color-text);
-  background: var(--color-background);
+  background: transparent;
   font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.5;
@@ -27,8 +28,10 @@
   scrollbar-width: thin;
 }
 * { box-sizing: border-box; }
-body { margin: 0; width: 400px; min-width: 320px; max-width: 100vw; }
-.popup { padding: var(--space-page); overflow-wrap: anywhere; }
+body { margin: 0; width: 400px; min-width: 320px; max-width: 100vw; background: transparent; border-radius: var(--radius-popup); overflow: hidden; }
+/* Chrome owns the native bubble. Keep our surface and its scroll inside rounded corners. */
+#root { border-radius: var(--radius-popup); overflow: hidden; }
+.popup { padding: var(--space-page); overflow-wrap: anywhere; background: var(--color-background); border-radius: var(--radius-popup); max-height: 600px; overflow: auto; }
 .popup > * + * { margin-top: var(--space-section); }
 p { margin: 0; }
 h2 { font-size: 14px; font-weight: 650; margin: 0; }
