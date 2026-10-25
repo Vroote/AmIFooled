@@ -12,7 +12,14 @@
 
 import { browser } from 'wxt/browser';
 import type { components } from './api.generated';
-import { BADGE_CLEARED, BADGE_COLOR, BADGE_UNKNOWN, badgeFor, type BadgeView } from './badge';
+import {
+  BADGE_CLEARED,
+  BADGE_COLOR,
+  BADGE_UNKNOWN,
+  badgeFor,
+  isCountedBadge,
+  type BadgeView,
+} from './badge';
 import { normalizeHostname } from './hostname';
 import { hasSitePermission, isEnabled } from './navigation-optin';
 
@@ -50,9 +57,11 @@ interface CacheEntry {
   expires: number;
 }
 
-interface Pending {
-  hostname: string;
+/** One navigation per tab: the token it was given, and whether it finished. */
+interface NavigationState {
   token: number;
+  hostname: string | null;
+  settled: boolean;
 }
 
 export interface NavigationChecks {
@@ -66,7 +75,7 @@ export interface NavigationChecks {
 export function createNavigationChecks(deps: NavigationDeps): NavigationChecks {
   const now = deps.now ?? (() => Date.now());
   const cache = new Map<string, CacheEntry>();
-  const pending = new Map<number, Pending>();
+  const latest = new Map<number, NavigationState>();
   let tokens = 0;
 
   function readCache(hostname: string): BadgeView | null {
@@ -113,72 +122,104 @@ export function createNavigationChecks(deps: NavigationDeps): NavigationChecks {
     }
   }
 
+  /**
+   * Claims this tab for one navigation, synchronously, before anything is awaited.
+   *
+   * The token is what every later branch checks, so a handler whose storage or
+   * permission lookup resolved late cannot write a badge over a newer navigation —
+   * including from the cached and the cleared branches, which perform no request.
+   */
+  function beginNavigation(tabId: number, hostname: string | null): number | null {
+    const previous = latest.get(tabId);
+    if (previous && !previous.settled && hostname !== null && previous.hostname === hostname) {
+      // A repeated event for the navigation already being handled: one request is enough.
+      return null;
+    }
+    const token = ++tokens;
+    latest.set(tabId, { token, hostname, settled: false });
+    return token;
+  }
+
+  function isCurrent(tabId: number, token: number): boolean {
+    return latest.get(tabId)?.token === token;
+  }
+
+  function settle(tabId: number, token: number): void {
+    const state = latest.get(tabId);
+    if (state?.token === token) {
+      state.settled = true;
+    }
+  }
+
   async function onNavigated(
     tabId: number,
     url: string | undefined,
     incognito = false,
   ): Promise<void> {
-    const hostname = navigableHostname(url);
-    // Any navigation we must not or cannot check clears a previous site's number.
-    if (!hostname || incognito) {
-      pending.delete(tabId);
-      await applyBadge(tabId, BADGE_CLEARED);
+    const hostname = incognito ? null : navigableHostname(url);
+    const token = beginNavigation(tabId, hostname);
+    if (token === null) {
       return;
     }
-    if (!(await isEnabled(hostname)) || !(await hasSitePermission(hostname))) {
-      pending.delete(tabId);
-      await applyBadge(tabId, BADGE_CLEARED);
-      return;
-    }
-
-    const current = pending.get(tabId);
-    if (current?.hostname === hostname) {
-      // Repeated events for the same navigation: one request is already in flight.
-      return;
-    }
-
-    const cached = readCache(hostname);
-    if (cached) {
-      pending.delete(tabId);
-      await applyBadge(tabId, cached);
-      return;
-    }
-
-    const token = ++tokens;
-    pending.set(tabId, { hostname, token });
-    const aborter = new AbortController();
-    const timer = setTimeout(() => aborter.abort(), REQUEST_TIMEOUT_MS);
-    let view = BADGE_UNKNOWN;
     try {
-      const data = await deps.checkBreaches(hostname, aborter.signal);
-      if (normalizeHostname(data.hostname) !== hostname) {
-        // An answer about another site is not an answer about this one.
-        view = BADGE_UNKNOWN;
-      } else {
-        view = badgeFor(hostname, data);
-        writeCache(hostname, view);
+      // Any navigation we must not or cannot check clears a previous site's number.
+      if (!hostname) {
+        if (isCurrent(tabId, token)) {
+          await applyBadge(tabId, BADGE_CLEARED);
+        }
+        return;
       }
-    } catch {
-      // Failures are not cached, so the next visit asks again instead of showing "?".
-      view = BADGE_UNKNOWN;
-    } finally {
-      clearTimeout(timer);
-    }
+      if (!(await isEnabled(hostname)) || !(await hasSitePermission(hostname))) {
+        if (isCurrent(tabId, token)) {
+          await applyBadge(tabId, BADGE_CLEARED);
+        }
+        return;
+      }
 
-    if (pending.get(tabId)?.token !== token) {
-      return;
+      const cached = readCache(hostname);
+      if (cached) {
+        if (isCurrent(tabId, token)) {
+          await applyBadge(tabId, cached);
+        }
+        return;
+      }
+
+      const aborter = new AbortController();
+      const timer = setTimeout(() => aborter.abort(), REQUEST_TIMEOUT_MS);
+      let view = BADGE_UNKNOWN;
+      try {
+        const data = await deps.checkBreaches(hostname, aborter.signal);
+        if (normalizeHostname(data.hostname) !== hostname) {
+          // An answer about another site is not an answer about this one.
+          view = BADGE_UNKNOWN;
+        } else {
+          view = badgeFor(hostname, data);
+          // Only a real count is remembered. Caching "?" would keep showing it after
+          // the source recovered, which the next-visit retry is supposed to prevent.
+          if (isCountedBadge(view)) {
+            writeCache(hostname, view);
+          }
+        }
+      } catch {
+        // Failures are not cached either, so the next visit asks again.
+        view = BADGE_UNKNOWN;
+      } finally {
+        clearTimeout(timer);
+      }
+
+      if (!isCurrent(tabId, token) || !(await stillOnSite(tabId, hostname))) {
+        return;
+      }
+      await applyBadge(tabId, view);
+    } finally {
+      settle(tabId, token);
     }
-    pending.delete(tabId);
-    if (!(await stillOnSite(tabId, hostname))) {
-      return;
-    }
-    await applyBadge(tabId, view);
   }
 
   return {
     onNavigated,
     onTabClosed(tabId: number): void {
-      pending.delete(tabId);
+      latest.delete(tabId);
     },
     clearCache(): void {
       cache.clear();

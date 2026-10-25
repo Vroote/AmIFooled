@@ -62,3 +62,14 @@ export function badgeFor(hostname: string, data: BreachesResponse): BadgeView {
 export function isRenderableBadgeText(text: string): boolean {
   return text.length <= BADGE_TEXT_LIMIT;
 }
+
+/**
+ * True only for a view that carries a real count.
+ *
+ * Callers use it to decide what may be remembered: an unknown answer must never be
+ * cached, or a source that has since recovered would keep showing "?" until the TTL
+ * expires.
+ */
+export function isCountedBadge(view: BadgeView): boolean {
+  return view !== BADGE_UNKNOWN && view.text !== '' && view.text !== '?';
+}

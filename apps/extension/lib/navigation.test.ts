@@ -243,6 +243,49 @@ describe('an answer never lands on the wrong site', () => {
     expect(badgeTextFor(1)).toEqual([]);
   });
 
+  it('does not paint a cached count after the tab moved on while storage was slow', async () => {
+    enable('a.example', 'b.example');
+    const checkBreaches = vi
+      .fn()
+      .mockImplementation(async (host: string) => response(host, host === 'a.example' ? 9 : 5));
+    const checks = createNavigationChecks({ checkBreaches });
+
+    // Warm the cache for a.example, so the stale handler takes the cached branch.
+    mocks.tabsGet.mockResolvedValue({ id: 2, url: 'https://a.example/' });
+    await checks.onNavigated(2, 'https://a.example/');
+
+    // The a.example event in tab 1 stalls inside the opt-in lookup.
+    const slowStorage = deferred<Record<string, string[]>>();
+    mocks.storageGet.mockReturnValueOnce(slowStorage.promise);
+    const stale = checks.onNavigated(1, 'https://a.example/');
+
+    // Meanwhile tab 1 goes to b.example and finishes.
+    mocks.tabsGet.mockResolvedValue({ id: 1, url: 'https://b.example/' });
+    await checks.onNavigated(1, 'https://b.example/');
+    slowStorage.resolve({ [STORAGE_KEY]: ['a.example', 'b.example'] });
+    await stale;
+
+    expect(badgeTextFor(1)).toEqual(['5']);
+  });
+
+  it('does not clear a newer badge when a stale handler finds the site disabled', async () => {
+    enable('b.example');
+    const checkBreaches = vi.fn().mockImplementation(async (host: string) => response(host, 5));
+    const checks = createNavigationChecks({ checkBreaches });
+
+    // The a.example event stalls, and a.example turns out not to be opted in.
+    const slowStorage = deferred<Record<string, string[]>>();
+    mocks.storageGet.mockReturnValueOnce(slowStorage.promise);
+    const stale = checks.onNavigated(1, 'https://a.example/');
+
+    mocks.tabsGet.mockResolvedValue({ id: 1, url: 'https://b.example/' });
+    await checks.onNavigated(1, 'https://b.example/');
+    slowStorage.resolve({ [STORAGE_KEY]: ['b.example'] });
+    await stale;
+
+    expect(badgeTextFor(1)).toEqual(['5']);
+  });
+
   it('refuses an answer about a different hostname', async () => {
     const checkBreaches = vi.fn().mockResolvedValue(response('other.example', 8));
     const checks = createNavigationChecks({ checkBreaches });
@@ -263,6 +306,22 @@ describe('unknown is shown as unknown', () => {
     expect(mocks.setTitle).toHaveBeenCalledWith(
       expect.objectContaining({ title: expect.stringContaining('это не «утечек не было»') }),
     );
+  });
+
+  it('asks again after an HTTP 200 unavailable, instead of freezing "?" for the whole TTL', async () => {
+    const checkBreaches = vi
+      .fn()
+      .mockResolvedValueOnce(response('example.com', null))
+      .mockResolvedValue(response('example.com', 4));
+    const checks = createNavigationChecks({ checkBreaches });
+
+    await checks.onNavigated(1, 'https://example.com/a');
+    expect(badgeTextFor(1)).toEqual(['?']);
+
+    // Same site, well inside the TTL: the recovered source must be asked again.
+    await checks.onNavigated(2, 'https://example.com/a');
+    expect(checkBreaches).toHaveBeenCalledTimes(2);
+    expect(badgeTextFor(2)).toEqual(['4']);
   });
 
   it('does not cache a failure, so the next visit asks again', async () => {

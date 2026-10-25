@@ -118,15 +118,26 @@ npm run build
 Установка unpacked MV3 расширения в окружении автора недоступна, поэтому сценарий ниже
 описан, но не пройден. Его нужно выполнить перед закрытием #7.
 
+**Проверять нужно на harness, а не на production-сборке.** В production popup hostname
+приходит из demo-контроллера #5 и всегда равен `demo.example`, поэтому карточка там
+предложит включить проверку для `demo.example`, а не для открытого сайта. Реальный
+контроллер активной вкладки подключает #6. До тех пор для ручной проверки есть отдельное
+тестовое расширение, которое спрашивает настоящую активную вкладку; логика бейджа и
+регистрация в background у него те же, что в production.
+
 ```sh
-npm run build
+npx wxt build apps/extension/tests/navigation-smoke
 python3 -m http.server 8765 --bind 127.0.0.1 --directory apps/extension/tests/collector-smoke/site
 ```
 
-`chrome://extensions` → Developer mode → Load unpacked → `apps/extension/.output/chrome-mv3`.
+`chrome://extensions` → Developer mode → Load unpacked →
+`apps/extension/.output/navigation-smoke/chrome-mv3`. В списке оно называется
+**AmIFooled navigation smoke**; его стоит удалить после проверки. Путь содержит скрытую
+папку `.output`: в диалоге Chrome скрытые папки показываются по `Cmd+Shift+.`.
 
-1. Открыть `http://localhost:8765` → значок без бейджа. В popup карточка «Проверять этот
-   сайт при открытии» в состоянии «Выключено», видно, что уйдёт только `localhost`.
+1. Открыть `http://localhost:8765` → значок без бейджа. В popup вверху должно стоять
+   «Активная вкладка: localhost», а карточка «Проверять этот сайт при открытии» —
+   в состоянии «Выключено», с текстом, что уйдёт только `localhost`.
 2. Нажать «Включить для этого сайта» → Chrome спросит разрешение на `*://localhost/*`.
    **Отказать** → карточка остаётся «Выключено», появляется сообщение, что ручная
    проверка продолжает работать. Бейджа нет.
