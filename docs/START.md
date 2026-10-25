@@ -1,8 +1,8 @@
 # Запуск и первая задача
 
 Проверено для Node 22 и Python 3.12. PostgreSQL, Redis, Docker, платный API и ключ не нужны
-для запуска каркаса. Это ещё не завершённый MVP: health, HIBP breaches API и rules-анализ
-работают, popup показывает состояние подготовки до подключения интеграции #6.
+для запуска. Ручной popup соединён с collector, HIBP API и анализом. Автоматический opt-in
+бейдж и итоговая приёмка выполняются отдельно в #7/#8.
 
 ## Получить код
 
@@ -85,8 +85,10 @@ npm run build
 
 В `chrome://extensions` включите Developer mode → Load unpacked →
 `apps/extension/.output/chrome-mv3`. Нажмите значок AmIFooled.
-До #6 backend и popup намеренно не соединены, данные страниц не собираются.
-В #6 будет подключён `WXT_API_BASE_URL`; `.env.example` в extension — только описание.
+Popup по умолчанию использует реальный backend http://127.0.0.1:8000. Для другого адреса
+задайте WXT_API_BASE_URL в apps/extension/.env или окружении сборки и пересоберите расширение;
+manifest автоматически получает permission конкретного backend host. Ключ LLM — только
+на сервере. Полный ручной сценарий, отмена и MV3 restart: [INTEGRATION.md](INTEGRATION.md).
 
 ## Агенту
 
