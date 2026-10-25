@@ -35,7 +35,7 @@ export const ANALYSIS_MODE_TEXT = {
 } as const;
 
 export const SEVERITY_TEXT = {
-  warning: 'Расхождение',
+  warning: 'Требует внимания',
   info: 'К сведению',
 } as const;
 

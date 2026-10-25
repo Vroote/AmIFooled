@@ -90,6 +90,8 @@ export function connectPopup(port: Browser.runtime.Port, base: string) {
   }
 
   port.onMessage.addListener((message: unknown) => {
+    // Local liveness only: no collection, context reset, or HTTP on heartbeats.
+    if (record(message) && message.type === 'ping') { send({ type: 'pong' }); return; }
     if (!record(message) || typeof message.id !== 'string' || !/^[\w-]{1,64}$/.test(message.id)) return;
     const id = message.id;
     if (message.type === 'cancel') { pending.get(id)?.abort(); return; }

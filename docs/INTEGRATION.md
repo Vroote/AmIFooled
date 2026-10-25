@@ -41,6 +41,12 @@ hostname, смена вкладки и disconnect инвалидируют ко�
 генерации. Смена документа сбрасывает обе карточки и текст. Нажатие «Обновить контекст
 проверки» получает свежие факты без автоматической повторной отправки политики.
 
+Пока popup открыт и его Port подключён, локальный ping/pong раз в 15s удерживает worker
+от обычного idle shutdown. Heartbeat не читает страницу, не обращается к API и не меняет
+контекст/карточки. При disconnect или закрытии popup interval удаляется; worker снова
+может штатно уснуть. Принудительное завершение worker и реальная навигация по-прежнему
+инвалидируют контекст, чтобы не присвоить старые данные новому документу.
+
 HTTP deadline — 16s, background operation — 19s, popup request — 20s; AbortSignal и закрытие
 порта отменяют сетевой запрос. Даже adapter, игнорирующий AbortSignal, не оставляет spinner.
 Параллельный повтор analyze/breaches не делает второй HTTP-запрос. MV3 restart не требует
@@ -74,5 +80,12 @@ unavailable не превращается в ноль. API v1 и его гене
 синтетической странице, не fixture response. Semantic качество всех документов этот
 smoke не гарантирует; полная acceptance matrix и opt-in навигация остаются #8/#7.
 
-Автотесты: 62 Vitest tests, 21 popup tests, 164 backend tests; lint/typecheck/build и Ruff passed.
+Автотесты: 65 Vitest tests, 21 popup tests, 164 backend tests; lint/typecheck/build и Ruff passed.
 Все внешние HTTP/Chrome вызовы в unit tests замоканы; paid smoke запускается отдельно.
+
+Повторный idle smoke после review #22: native Chrome, без DevTools/Playwright auto-attach
+к worker. Через 35s и 70s простоя сохранены введённая политика, реальный HIBP результат и
+тот же активный worker. После закрытия popup worker штатно остановился через 35s.
+Платный LLM для этой проверки не вызывался. Для воспроизведения не подключайте debugger
+к worker: он может скрыть обычный idle shutdown. Основание heartbeat:
+[Chrome service worker lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle#chrome-114).

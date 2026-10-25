@@ -4,10 +4,15 @@ import type { PreparedContext, RequestFailure } from '../entrypoints/popup/state
 import { record, validEvidence, validAnalysis, validBreaches } from './api-validation';
 
 const PORT_NAME = 'amifooled:popup:v1';
+// Chrome can stop an idle MV3 worker after ~30s even with an open Port.
+// Messages reset that timer; keep this scoped to the visible popup's connection.
+const HEARTBEAT_MS = 15_000;
 const failureKinds = ['offline', 'timeout', 'not_implemented', 'invalid_request', 'too_large', 'server', 'malformed', 'unknown', 'page_changed', 'unsupported_page'];
 
 export function createRealController(): PopupController {
   let port: Browser.runtime.Port | undefined;
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  const stopHeartbeat = () => { clearInterval(heartbeat); heartbeat = undefined; };
   const listeners = new Set<() => void>();
   const pending = new Map<string, { resolve(value: unknown): void; reject(error: RequestError): void }>();
   const invalidate = () => {
@@ -19,6 +24,13 @@ export function createRealController(): PopupController {
     if (port) return port;
     const next = browser.runtime.connect({ name: PORT_NAME });
     port = next;
+    stopHeartbeat();
+    heartbeat = setInterval(() => {
+      try { next.postMessage({ type: 'ping' }); }
+      catch {
+        if (port === next) { stopHeartbeat(); port = undefined; invalidate(); }
+      }
+    }, HEARTBEAT_MS);
     next.onMessage.addListener((message: unknown) => {
       if (!record(message)) return;
       if (message.type === 'invalidated') { invalidate(); return; }
@@ -32,7 +44,7 @@ export function createRealController(): PopupController {
         task.reject(new RequestError(failure));
       }
     });
-    next.onDisconnect.addListener(() => { if (port === next) { port = undefined; invalidate(); } });
+    next.onDisconnect.addListener(() => { if (port === next) { stopHeartbeat(); port = undefined; invalidate(); } });
     return next;
   };
   async function call(type: string, fields = {}, signal?: AbortSignal): Promise<unknown> {
@@ -57,7 +69,7 @@ export function createRealController(): PopupController {
   return {
     demo: false,
     subscribeInvalidation(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    dispose() { port?.disconnect(); port = undefined; invalidate(); },
+    dispose() { stopHeartbeat(); port?.disconnect(); port = undefined; invalidate(); },
     async prepare() {
       const result = await call('prepare');
       if (!record(result) || !record(result.page) || result.page.status !== 'ready' ||

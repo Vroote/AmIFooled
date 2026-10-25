@@ -16,6 +16,7 @@ const mock = vi.hoisted(() => {
   const updated = event();
   const activated = event();
   const removed = event();
+  const sent: unknown[] = [];
   const ports: { disconnect(): void }[] = [];
   const connect = () => {
     const clientMessages = event(), serverMessages = event();
@@ -28,7 +29,10 @@ const mock = vi.hoisted(() => {
     };
     const client = {
       name: 'amifooled:popup:v1', onMessage: clientMessages, onDisconnect: clientDisconnect,
-      disconnect, postMessage: (value: unknown) => queueMicrotask(() => { if (!closed) serverMessages.emit(value); }),
+      disconnect, postMessage: (value: unknown) => {
+        sent.push(value);
+        queueMicrotask(() => { if (!closed) serverMessages.emit(value); });
+      },
     };
     const server = {
       name: 'amifooled:popup:v1', sender: { id: 'extension-id', url: 'chrome-extension://extension-id/popup.html' },
@@ -39,7 +43,7 @@ const mock = vi.hoisted(() => {
     connected.emit(server);
     return client;
   };
-  return { connected, updated, activated, removed, ports,
+  return { connected, updated, activated, removed, ports, sent,
     browser: {
       runtime: { id: 'extension-id', getURL: (path: string) => 'chrome-extension://extension-id' + path, onConnect: connected, connect: vi.fn(connect) },
       tabs: { query: vi.fn(), get: vi.fn(), onUpdated: updated, onActivated: activated, onRemoved: removed },
@@ -52,6 +56,7 @@ vi.mock('wxt/browser', () => ({ browser: mock.browser }));
 const analysis = { hostname: 'example.com', status: 'ok', mode: 'rules', summary: 'Result', findings: [], limitations: [] };
 let doc = 'document-A';
 beforeEach(() => {
+  mock.sent.length = 0;
   doc = 'document-A';
   mock.connected.clear(); mock.updated.clear(); mock.activated.clear(); mock.removed.clear();
   mock.browser.tabs.query.mockResolvedValue([{ id: 7, url: 'https://example.com/policy?secret=1', active: true }]);
@@ -170,4 +175,38 @@ it('does not hijack unrelated extension ports', () => {
   const disconnect = vi.fn();
   mock.connected.emit({ name: 'another-feature', disconnect });
   expect(disconnect).not.toHaveBeenCalled();
+});
+
+it('keeps an idle popup context alive without collecting again or sending HTTP', async () => {
+  vi.useFakeTimers();
+  const fetcher = vi.fn().mockResolvedValue(Response.json(analysis));
+  vi.stubGlobal('fetch', fetcher);
+  const controller = createRealController();
+  const invalidated = vi.fn(); controller.subscribeInvalidation?.(invalidated);
+  const prepared = await controller.prepare();
+  const inspections = mock.browser.scripting.executeScript.mock.calls.length;
+  await vi.advanceTimersByTimeAsync(75_000);
+  expect(mock.sent.filter((message) => JSON.stringify(message) === '{"type":"ping"}')).toHaveLength(5);
+  expect(invalidated).not.toHaveBeenCalled();
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(mock.browser.scripting.executeScript).toHaveBeenCalledTimes(inspections);
+  expect(vi.getTimerCount()).toBe(1); // One heartbeat, no pending request timers.
+  const result = await controller.analyze({ hostname: 'example.com', policyText: 'Public policy.', evidence: prepared.evidence }, new AbortController().signal);
+  expect(result).toEqual(analysis);
+  controller.dispose?.();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('stops heartbeat on worker disconnect and starts exactly one for a new connection', async () => {
+  vi.useFakeTimers();
+  const controller = createRealController();
+  await controller.prepare();
+  expect(vi.getTimerCount()).toBe(1);
+  mock.ports.at(-1)?.disconnect();
+  expect(vi.getTimerCount()).toBe(0);
+  await controller.prepare();
+  await controller.readPolicyFromPage?.();
+  expect(vi.getTimerCount()).toBe(1);
+  controller.dispose?.();
+  expect(vi.getTimerCount()).toBe(0);
 });
