@@ -17,12 +17,11 @@ def test_health_and_openapi_are_available_without_external_services():
     assert client.get("/openapi.json").status_code == 200
 
 
-def test_analyze_is_implemented_and_breaches_is_still_a_scaffold():
+def test_analyze_answers_with_a_contract_valid_response():
     request = json.loads((ROOT / "contracts/fixtures/analysis-request.json").read_text())
     analysis = client.post("/v1/analyze", json=request)
     assert analysis.status_code == 200
     AnalysisResponse.model_validate(analysis.json())
-    assert client.get("/v1/breaches", params={"hostname": "example.com"}).status_code == 501
 
 
 @pytest.mark.parametrize("hostname", ["https://example.com/path?secret=1", "a@example.com"])
@@ -43,6 +42,7 @@ def test_request_bounds_and_forbidden_fields():
         ("analysis-request", AnalysisRequest),
         ("analysis-response", AnalysisResponse),
         ("breaches-response", BreachesResponse),
+        ("breaches-success-response", BreachesResponse),
     ],
 )
 def test_shared_fixtures_follow_the_api_contract(file, model):
