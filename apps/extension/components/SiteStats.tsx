@@ -25,7 +25,7 @@ export default function SiteStats({ evidence, breaches, canCheck, onCheck }: Pro
       <div className={`stat ${count && count > 0 ? 'stat--attention' : ''}`}>
         <div className="stat__label"><Icon name="breach" /><h2>Утечки</h2></div>
         <div role="status"><p className="stat__number">{count === null ? '—' : count.toLocaleString('ru-RU')}</p><p className="stat__caption">{caption}{result?.source === 'fixture' ? ' · демо' : ''}{result?.stale ? ' · кэш' : ''}</p></div>
-        <button className="text-button" type="button" onClick={onCheck} disabled={!canCheck || loading} aria-busy={loading || undefined} aria-label="Проверить утечки сайта">{loading ? 'Проверяю…' : 'Проверить'}<Icon name="arrow" /></button>
+        <button className="text-button" type="button" onClick={onCheck} disabled={!canCheck || loading} aria-busy={loading || undefined} aria-label="Проверить утечки сайта">{loading ? 'Проверяю…' : breaches.phase === 'idle' ? 'Проверить' : 'Проверить снова'}<Icon name="arrow" /></button>
       </div>
     </section>
   );

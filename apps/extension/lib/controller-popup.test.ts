@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, createElement } from 'react';
+import { act, createElement, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import App from '../entrypoints/popup/App';
@@ -42,7 +42,8 @@ it('discovers only on click, shows source and preview, never asks for pasted tex
   const adapter = controller(); adapter.analyze = vi.fn(adapter.analyze); adapter.discoverPolicy = vi.fn(adapter.discoverPolicy!); adapter.checkBreaches = vi.fn(adapter.checkBreaches);
   await act(async () => root.render(createElement(App, { controller: adapter })));
   expect(adapter.discoverPolicy).not.toHaveBeenCalled();
-  expect(adapter.checkBreaches).not.toHaveBeenCalled();
+  expect(adapter.checkBreaches).toHaveBeenCalledOnce();
+  expect(adapter.checkBreaches).toHaveBeenCalledWith('example.com', expect.any(AbortSignal));
   expect(host.querySelector('input')).toBeNull();
   await act(async () => button('Найти соглашение').click());
   expect(adapter.discoverPolicy).toHaveBeenCalledOnce();
@@ -204,4 +205,39 @@ it('accepts a custom policy URL immediately without discovery or automatic analy
   expect(adapter.analyze).not.toHaveBeenCalled();
   expect(button('Проверить')).toBeDefined();
   expect(host.querySelector('textarea')).toBeNull();
+});
+
+
+it('auto-checks breaches once in StrictMode and keeps the manual retry without auto-retry loops', async () => {
+  const adapter = controller();
+  adapter.checkBreaches = vi.fn(adapter.checkBreaches);
+  await act(async () => root.render(createElement(StrictMode, null, createElement(App, {controller: adapter}))));
+  expect(adapter.checkBreaches).toHaveBeenCalledOnce();
+  await act(async () => button('Найти соглашение').click());
+  expect(adapter.checkBreaches).toHaveBeenCalledOnce();
+  await act(async () => button('Проверить утечки сайта').click());
+  expect(adapter.checkBreaches).toHaveBeenCalledTimes(2);
+});
+
+it('does not auto-check breaches on unsupported pages', async () => {
+  const adapter = controller();
+  adapter.prepare = async () => ({page: {status: 'unsupported', reason: 'restricted'}, evidence: []});
+  adapter.checkBreaches = vi.fn(adapter.checkBreaches);
+  await act(async () => root.render(createElement(App, {controller: adapter})));
+  expect(adapter.checkBreaches).not.toHaveBeenCalled();
+});
+
+it('aborts the automatic breach check and discards a late answer after navigation', async () => {
+  const adapter = controller();
+  let invalidate = () => {};
+  let finish!: (value: Awaited<ReturnType<PopupController['checkBreaches']>>) => void;
+  let signal!: AbortSignal;
+  adapter.subscribeInvalidation = (listener) => {invalidate = listener; return () => {};};
+  adapter.checkBreaches = (_hostname, s) => {signal = s; return new Promise((resolve) => {finish = resolve;});};
+  await act(async () => root.render(createElement(App, {controller: adapter})));
+  await act(async () => invalidate());
+  expect(signal.aborted).toBe(true);
+  await act(async () => finish({hostname: 'example.com', matched_domain: 'example.com', status: 'not_found', count: 0, breaches: [], source: 'fixture', stale: false, checked_at: '2026-10-25T10:00:00Z', attribution_url: 'https://haveibeenpwned.com/'}));
+  expect(host.textContent).not.toContain('Совпадений в HIBP нет');
+  expect(host.textContent).toContain('Обновить контекст проверки');
 });

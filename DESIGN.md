@@ -92,7 +92,7 @@ Popup шириной 400px, min-width 320px, max-width 100vw. Две колон�
 | Button | components/ActionButton.tsx | `.action` | primary, secondary, icon, busy | keyboard, pending tests |
 | Card | components/CardShell.tsx | `.card` | analysis, breaches, unsupported | independent result/error states |
 | Field | components/PolicyForm.tsx | `.field__*` | URL fallback, read-only preview | validation, focus, retries |
-| Counters | components/SiteStats.tsx | `.site-stats`, `.stat` | local cookies, manual HIBP | unknown vs zero tests |
+| Counters | components/SiteStats.tsx | `.site-stats`, `.stat` | local cookies, automatic HIBP + retry | unknown vs zero tests |
 | Disclosure | native details/summary | `.disclosure`, detail classes | source, evidence, settings | keyboard and browser |
 | Icon | components/Icon.tsx | shared local SVG paths | decorative beside text | accessible names remain text |
 
@@ -118,7 +118,7 @@ Scrollbar общий: thumb/track/hover/active tokens, standard + WebKit, forced
 ## Do's and Don'ts
 
 - Показывать только наблюдаемое количество cookies (без HttpOnly), отсутствие данных ≠ 0.
-- Запрашивать HIBP по клику или ранее выданному opt-in; открытие popup не отправляет домен.
+- По прямому запросу пользователя #25 запрашивать HIBP автоматически после определения сайта при открытии popup. Отправляется только hostname; кнопка остаётся для повтора. Фоновая проверка при навигации сохраняет отдельный opt-in.
 - Поиск и отправка документа — два отдельных действия. URL fallback вместо вставки текста.
 - Не называть document-only warning доказанным нарушением. Отсутствие сигнала ≠ безопасность.
 - Не скрывать ошибки проверки, частичные данные, truncation или demo/stale метки.
