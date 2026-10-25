@@ -52,6 +52,15 @@ const response = (hostname: string, count: number | null): BreachesResponse => (
   attribution_url: 'https://haveibeenpwned.com/',
 });
 
+/** Lets a test wait until the code under test actually reached a mocked browser call. */
+function signal() {
+  let fire!: () => void;
+  const reached = new Promise<void>((resolve) => {
+    fire = resolve;
+  });
+  return { reached, fire };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
@@ -284,6 +293,62 @@ describe('an answer never lands on the wrong site', () => {
     await stale;
 
     expect(badgeTextFor(1)).toEqual(['5']);
+  });
+
+  it('does not paint after a delayed tab lookup answered with the old site', async () => {
+    enable('a.example', 'b.example');
+    const checkBreaches = vi
+      .fn()
+      .mockImplementation(async (host: string) => response(host, host === 'a.example' ? 9 : 5));
+    const checks = createNavigationChecks({ checkBreaches });
+
+    // The tab lookup for a.example stalls and will answer with its own stale snapshot,
+    // so the handler passes stillOnSite after a newer navigation already painted.
+    const slowTab = deferred<{ id: number; url: string }>();
+    const atLookup = signal();
+    mocks.tabsGet.mockImplementationOnce(() => {
+      atLookup.fire();
+      return slowTab.promise;
+    });
+    const stale = checks.onNavigated(1, 'https://a.example/');
+    await atLookup.reached;
+
+    mocks.tabsGet.mockResolvedValue({ id: 1, url: 'https://b.example/' });
+    await checks.onNavigated(1, 'https://b.example/');
+    slowTab.resolve({ id: 1, url: 'https://a.example/' });
+    await stale;
+
+    expect(badgeTextFor(1)).toEqual(['5']);
+  });
+
+  it('stops writing the rest of the badge once its navigation became stale', async () => {
+    enable('a.example', 'b.example');
+    const checkBreaches = vi
+      .fn()
+      .mockImplementation(async (host: string) => response(host, host === 'a.example' ? 9 : 5));
+    const checks = createNavigationChecks({ checkBreaches });
+
+    // a.example passes every check, including the tab lookup, then its first badge call
+    // stalls mid-write.
+    mocks.tabsGet.mockResolvedValue({ id: 1, url: 'https://a.example/' });
+    const slowWrite = deferred<void>();
+    const atWrite = signal();
+    mocks.setBadgeText.mockImplementationOnce(() => {
+      atWrite.fire();
+      return slowWrite.promise;
+    });
+    const stale = checks.onNavigated(1, 'https://a.example/');
+    await atWrite.reached;
+
+    mocks.tabsGet.mockResolvedValue({ id: 1, url: 'https://b.example/' });
+    await checks.onNavigated(1, 'https://b.example/');
+    slowWrite.resolve();
+    await stale;
+
+    // The tooltip must belong to the site whose number is on the badge.
+    const titles = mocks.setTitle.mock.calls.map((call) => call[0].title as string);
+    expect(titles.at(-1)).toContain('b.example');
+    expect(titles.filter((title) => title.includes('a.example'))).toEqual([]);
   });
 
   it('refuses an answer about a different hostname', async () => {

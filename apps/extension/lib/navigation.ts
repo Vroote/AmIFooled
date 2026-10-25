@@ -101,11 +101,23 @@ export function createNavigationChecks(deps: NavigationDeps): NavigationChecks {
     cache.set(hostname, { view, expires: now() + CACHE_TTL_MS });
   }
 
-  async function applyBadge(tabId: number, view: BadgeView): Promise<void> {
+  /**
+   * Writes one badge, re-checking the navigation before every browser call.
+   *
+   * Each call is a separate await, so without the checks a newer navigation could land
+   * between them and leave one site's number next to another site's tooltip.
+   */
+  async function applyBadge(tabId: number, view: BadgeView, token: number): Promise<void> {
     try {
+      if (!isCurrent(tabId, token)) {
+        return;
+      }
       await browser.action.setBadgeText({ tabId, text: view.text });
+      if (!isCurrent(tabId, token)) {
+        return;
+      }
       await browser.action.setTitle({ tabId, title: view.title });
-      if (view.text) {
+      if (view.text && isCurrent(tabId, token)) {
         await browser.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR });
       }
     } catch {
@@ -165,13 +177,13 @@ export function createNavigationChecks(deps: NavigationDeps): NavigationChecks {
       // Any navigation we must not or cannot check clears a previous site's number.
       if (!hostname) {
         if (isCurrent(tabId, token)) {
-          await applyBadge(tabId, BADGE_CLEARED);
+          await applyBadge(tabId, BADGE_CLEARED, token);
         }
         return;
       }
       if (!(await isEnabled(hostname)) || !(await hasSitePermission(hostname))) {
         if (isCurrent(tabId, token)) {
-          await applyBadge(tabId, BADGE_CLEARED);
+          await applyBadge(tabId, BADGE_CLEARED, token);
         }
         return;
       }
@@ -179,7 +191,7 @@ export function createNavigationChecks(deps: NavigationDeps): NavigationChecks {
       const cached = readCache(hostname);
       if (cached) {
         if (isCurrent(tabId, token)) {
-          await applyBadge(tabId, cached);
+          await applyBadge(tabId, cached, token);
         }
         return;
       }
@@ -207,10 +219,17 @@ export function createNavigationChecks(deps: NavigationDeps): NavigationChecks {
         clearTimeout(timer);
       }
 
-      if (!isCurrent(tabId, token) || !(await stillOnSite(tabId, hostname))) {
+      if (!isCurrent(tabId, token)) {
         return;
       }
-      await applyBadge(tabId, view);
+      const onSite = await stillOnSite(tabId, hostname);
+      // tabs.get is another await: a newer navigation may have landed and painted while
+      // this lookup was in flight, and a late lookup may even answer with the old
+      // snapshot. The navigation is therefore re-checked after it, not only before.
+      if (!onSite || !isCurrent(tabId, token)) {
+        return;
+      }
+      await applyBadge(tabId, view, token);
     } finally {
       settle(tabId, token);
     }
