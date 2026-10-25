@@ -23,6 +23,8 @@
 - Исходный clone и незакоммиченные `.idea/` не менялись; setup выполнен в отдельном worktree.
 
 GitHub: 10 issues, milestone, метки, реальные blocked-by dependencies; Project заполнен,
-4 поля добавлены, существующий board view сохранён. Ruleset creation вернул 404 при
-Write/admin=false; секрет PROJECT_TOKEN отсутствует. Эти ограничения вынесены в #10.
+4 поля добавлены, существующий board view сохранён. Native Project workflows добавления,
+закрытия и merge подтверждены enabled=true; их фильтры/целевые статусы API не раскрывает.
+Ruleset creation вернул 404 при Write/admin=false; секрет PROJECT_TOKEN для расширенной
+синхронизации отсутствует. Эти ограничения вынесены в #10.
 Итог удалённого CI и review смотреть в setup PR; локальные проверки не заменяют approve.

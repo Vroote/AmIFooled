@@ -11,6 +11,10 @@
   Depends on и заполняет существующий Project, не заменяя колонки/настройки владельца.
 - Существующий View 1 уже имеет BOARD_LAYOUT; сохранён. Между задачами добавлены native
   GitHub issue dependencies `blocked by`, без удаления существующих связей.
+- GraphQL подтвердил `enabled=true` у существующих workflows: Auto-add to project,
+  Auto-add sub-issues to project, Auto-close issue, Item added to project, Item closed,
+  Pull request linked to issue и Pull request merged. Эти настройки сохранены;
+  точные фильтры и целевые поля/статусы API не раскрывает, их нужно проверить владельцу.
 - Rulesets при проверке отсутствовали. Чтение branch protection вернуло 404 при роли
   без Admin; это не доказывает отсутствия старого branch protection.
 - Попытка создать отдельный additive ruleset через POST `/repos/Vroote/AmIFooled/rulesets`
@@ -81,10 +85,13 @@ Secrets and variables → Actions. Токен создаёт/вводит вла
 не копируется в Actions.** Пока secret отсутствует, workflow сообщает это в summary,
 а board обновляется локальным script после claim/review/merge.
 
-Альтернатива без PAT: в меню Project → Workflows включить встроенные Item closed и Pull
-request merged → Done, reopen → Todo, auto-add с фильтром `repo:Vroote/AmIFooled` (если
-доступно в тарифе). Эти переключатели не доступны через используемый CLI; не считать
-их включёнными без UI-проверки. Локальная синхронизация остаётся запасным способом.
+Вариант без отдельного PAT: существующие встроенные workflows уже включены (см. выше).
+Владельцу проверить в Project → Workflows их **параметры**: Item closed и Pull request
+merged → Done, reopen → Todo, auto-add с фильтром `repo:Vroote/AmIFooled` (если доступно).
+Особенно проверить Auto-close issue: перенос карточки в Done может закрыть issue, поэтому
+не использовать Done для просто готового к review PR. Изменение этих переключателей не
+доступно через используемый API; наличие enabled=true не подтверждает точный фильтр или
+target status. Локальная синхронизация остаётся проверенным запасным способом.
 
 Обычный GITHUB_TOKEN не имеет доступа к user Projects —
 [ограничение GitHub Actions](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/automating-projects-using-actions).
