@@ -461,9 +461,8 @@
             "name": "hostname",
             "required": true,
             "schema": {
-              "maxLength": 253,
+              "maxLength": 254,
               "minLength": 1,
-              "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$",
               "title": "Hostname",
               "type": "string"
             }
@@ -489,16 +488,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
         "summary": "Breaches"

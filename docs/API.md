@@ -6,12 +6,14 @@
 | Endpoint | Реализовано в setup | Контракт feature |
 |---|---|---|
 | GET /health | 200 status=ok | Без внешних зависимостей |
-| POST /v1/analyze | 501 после валидации запроса | hostname, policy_text, evidence → summary/findings/limitations/mode |
-| GET /v1/breaches?hostname=... | 501 после валидации hostname | matched_domain, incidents, count/status/source/checked_at |
+| POST /v1/analyze | Rules + optional LLM | hostname, policy_text, evidence → summary/findings/limitations/mode |
+| GET /v1/breaches?hostname=... | HIBP public catalogue | matched_domain, breaches, count/status/source/checked_at |
 
 Pydantic запрещает лишние поля. Политика ограничена 20 000 символов, факты — 100 элементами.
-Полная проверка DNS/IDNA/PSL и лимит HTTP body — AC задач #3/#4, текущий regex лишь ранняя
-граница формата. Клиент проверяет схему неизвестных сетевых данных; TS тип не заменяет
+GET /v1/breaches нормализует DNS/IDNA/PSL, включая private suffixes, и принимает до 254
+символов query hostname с завершающей точкой; ответ содержит ASCII hostname до 253 символов.
+Для analyze hostname ограничен базовым regex, тело запроса — 256 KiB до JSON parsing. Клиент проверяет
+схему неизвестных сетевых данных; TS тип не заменяет
 runtime validation. Не добавлять URL-fetch endpoint: так избегаем crawler/SSRF в scope MVP.
 
 `AnalysisResponse.status`: ok / insufficient_data / unavailable. `mode`: rules / llm / fixture.
@@ -20,8 +22,10 @@ Finding содержит точную подстроку политики и IDs
 
 `BreachesResponse.status`: ok с count>0; not_found с count=0; unavailable с count=null.
 При возврате stale cache показывать дату и stale=true, не выдавать за свежее наблюдение.
-Инварианты status/count реализует и тестирует #4; текущие модели описывают transport shape.
+Инварианты status/count реализованы в сервисе breaches и проверены offline tests.
 Не использовать HTTP 404 для upstream outage; классифицировать недоступность отдельно.
+
+Сопоставление домена, кэш, fixture mode и проверка HIBP: [BREACHES.md](BREACHES.md).
 
 Ключ LLM живёт на сервере. Backend работает локально на loopback, тело запросов не логируется.
 Опциональный провайдер ограничен общим отменяемым deadline в оставшемся бюджете анализа
