@@ -1,0 +1,6 @@
+extend = "apps/api/pyproject.toml"
+
+[lint.per-file-ignores]
+# Issue prose and GraphQL schemas are clearer as intact strings.
+"scripts/publish-tasks.py" = ["E501"]
+"scripts/merge-pr.py" = ["E501"]

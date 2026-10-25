@@ -1,0 +1,34 @@
+name: Feature task
+description: Ограниченная задача для одного агента и одного PR
+title: "[FEATURE] "
+labels: ["kind:feature", "status:ready"]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Результат и границы
+      description: Что пользователь сможет сделать; что не входит в задачу.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Зависимости и владение файлами
+      description: Номера блокирующих issues, границы модулей, владелец контракта.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Проверяемые условия, включая пустые данные и ошибки.
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Проверка и оценка времени
+      description: Команды/ручной сценарий; ожидаемое время; что отдаём следующему агенту.
+    validations:
+      required: true

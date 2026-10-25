@@ -1,0 +1,42 @@
+{
+  "setup": {
+    "number": 1,
+    "url": "https://github.com/Vroote/AmIFooled/issues/1"
+  },
+  "collect": {
+    "number": 2,
+    "url": "https://github.com/Vroote/AmIFooled/issues/2"
+  },
+  "analyze": {
+    "number": 3,
+    "url": "https://github.com/Vroote/AmIFooled/issues/3"
+  },
+  "breaches": {
+    "number": 4,
+    "url": "https://github.com/Vroote/AmIFooled/issues/4"
+  },
+  "ui": {
+    "number": 5,
+    "url": "https://github.com/Vroote/AmIFooled/issues/5"
+  },
+  "connect": {
+    "number": 6,
+    "url": "https://github.com/Vroote/AmIFooled/issues/6"
+  },
+  "visit": {
+    "number": 7,
+    "url": "https://github.com/Vroote/AmIFooled/issues/7"
+  },
+  "qa": {
+    "number": 8,
+    "url": "https://github.com/Vroote/AmIFooled/issues/8"
+  },
+  "archive": {
+    "number": 9,
+    "url": "https://github.com/Vroote/AmIFooled/issues/9"
+  },
+  "admin": {
+    "number": 10,
+    "url": "https://github.com/Vroote/AmIFooled/issues/10"
+  }
+}

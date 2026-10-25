@@ -1,0 +1,7 @@
+{
+  "hostname": "example.com",
+  "policy_text": "Демонстрационная политика: мы не передаём данные рекламным партнёрам.",
+  "evidence": [
+    {"id": "resource-1", "kind": "resource_domain", "value": "metrics.example.net", "limitation": "Сторонний ресурс сам по себе не доказывает передачу персональных данных."}
+  ]
+}

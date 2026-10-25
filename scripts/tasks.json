@@ -1,0 +1,92 @@
+[
+  {
+    "key": "setup", "title": "[SETUP] Основа WXT + FastAPI, контракт API и агентский процесс",
+    "priority": "P0", "lane": "Coordinator", "estimate": 30, "area": "platform", "depends": [],
+    "scope": "Подготовить запускаемый монорепозиторий, общий контракт, инструкции, шаблоны и проверки. Это инфраструктура, не реализация анализа.",
+    "files": "AGENTS.md, docs/, contracts/, .github/, scripts/, manifests; минимальные apps/api и apps/extension",
+    "criteria": ["Исходный README и локальные изменения сохранены; работа в отдельном worktree и PR.", "Node 22 + Python 3.12: health работает без БД/ключей; WXT собирает Chrome MV3; неподключённые функции честно возвращают 501.", "OpenAPI и TypeScript генерируются из Python-моделей; общие fixtures проверены.", "CI проверяет backend, frontend и drift контрактов; PR требует ссылку на issue и независимое ревью по инструкции.", "Созданы issues с зависимостями, AC, оценками и метками; добавлены в Project, ограничения доступа явно записаны."],
+    "checks": "npm ci; npm run lint; npm run typecheck; npm run build; pytest; ruff; генерация контрактов без diff",
+    "handoff": "Все потоки стартуют от main после одного approve и merge этого PR."
+  },
+  {
+    "key": "collect", "title": "[P0] Сбор ограниченных фактов страницы и текста политики",
+    "priority": "P0", "lane": "A · Extension", "estimate": 75, "area": "extension", "depends": ["setup"],
+    "scope": "После действия пользователя прочитать активную HTTP(S)-вкладку через activeTab + scripting. Собирать hostname сторонних ресурсов из Performance API и число доступных JS cookies. Пользователь открывает публичную политику/выделяет её текст; для демо разрешён явный ввод текста. Не строить crawler за шесть часов.",
+    "files": "apps/extension/lib/collector*, apps/extension/entrypoints/content*; manifest permissions — согласовать с владельцем visit",
+    "criteria": ["Сбор запускается только пользовательским действием; chrome://, Web Store, file:// и отсутствие вкладки дают понятное состояние.", "Наружу не уходят cookie values/names, URL path/query/fragment, поля форм, email или полный DOM. Только согласованный Evidence и выбранный публичный policy_text.", "Resource Timing не называется полной сетевой историей; отсутствие записи — не отсутствие трекинга; third-party не равняется tracker.", "document.cookie даёт только доступное JS количество: HttpOnly/partitioned/third-party cookies не объявляются найденными или отсутствующими.", "hostname нормализован URL parser: lowercase/IDNA; policy_text ≤20000, evidence ≤100, значения ≤500; HTML не выполняется.", "В fixtures проверены пустая политика, длинный текст, restricted page и ресурс другого домена. API/permission probes не провоцируют prompts сайта.", "Экспортирован collectPageEvidence() с типом из api.generated.ts; пример payload приложен в PR."],
+    "checks": "Unit tests чистой нормализации/санитизации + ручная проверка unpacked extension на обычной и запрещённой вкладке.",
+    "handoff": "@владелец-connect: пример payload, сигнатура collector, известные ограничения."
+  },
+  {
+    "key": "analyze", "title": "[P0] Анализ политики и фактов: объяснимые сигналы + fallback",
+    "priority": "P0", "lane": "B · Analysis API", "estimate": 100, "area": "backend", "depends": ["setup"],
+    "scope": "Заменить 501 POST /v1/analyze работающим bounded анализом. Сначала детерминированные правила, затем адаптер LLM при наличии серверного ключа. Политика приходит текстом: сервер не fetch-ит произвольные URL.",
+    "files": "apps/api/app/analysis/, apps/api/app/main.py — только analyze endpoint, apps/api/tests/test_analysis*",
+    "criteria": ["Ответ соответствует AnalysisResponse: summary, findings с точной цитатой policy_quote и существующими evidence_ids, limitations, mode.", "Нет выдуманных цитат и доказательств: неподтверждённые findings удаляются; неизвестное становится insufficient_data.", "Результат формулируется как сигнал/вопрос для проверки; сторонний домен не доказывает передачу данных, мошенничество или юридическое нарушение.", "Без ключа работает rules; ошибка/timeout/невалидный JSON LLM не ломают ответ и явно отмечены в limitations. Весь анализ укладывается в 15 секунд.", "Ключ только на сервере; тела запросов и policy_text не логируются и не сохраняются; нет обязательной БД.", "Текст политики рассматривается как недоверенные данные: prompt injection не меняет системные инструкции, не включает tools и не исполняет команды.", "Пустой/слишком большой input отклоняется; backend ограничивает тело запроса до разбора JSON, а не только длины полей после разбора.", "Есть тесты: цитаты/ID, нейтральная политика, недостаток данных, injection, timeout и неверный ответ провайдера."],
+    "checks": "pytest с mocked provider без платных API; один live smoke только при наличии ключа; CI остаётся офлайн.",
+    "handoff": "@владелец-connect: curl пример, latency, режим rules/llm и ограничения. Если к T+90 ключа нет — не задерживать core ради LLM."
+  },
+  {
+    "key": "breaches", "title": "[P0] Известные утечки сайта: HIBP, домены, кэш и честные статусы",
+    "priority": "P0", "lane": "C · Breach API", "estimate": 75, "area": "backend", "depends": ["setup"],
+    "scope": "Реализовать GET /v1/breaches?hostname=... через публичный каталог HIBP /api/v3/breaches?Domain=... . Не использовать /breachedDomain и поиск email.",
+    "files": "apps/api/app/breaches/, apps/api/app/main.py — только breaches endpoint, apps/api/tests/test_breaches*",
+    "criteria": ["Возвращаются count, даты, классы данных, is_verified, matched_domain, checked_at и источник. Считаются записи известных инцидентов, не число всех реальных утечек.", "ok + count>0; not_found + count=0; unavailable + count=null. 429/5xx/timeout не превращаются в ноль.", "Нормализация IDNA и registrable domain через PSL (например tldextract с отключённым runtime download). Tests: www, поддомен, co.uk, github.io, trailing dot, invalid hostname/IP.", "Не сводить multi-tenant домены к чужому владельцу; показать точный matched_domain и объяснение сопоставления.", "Upstream URL фиксирован HIBP; hostname передаётся query parameter; redirects запрещены/контролируются; timeout ≤5 сек; User-Agent задан.", "Ограниченный in-memory TTL cache, максимум 256 ключей, TTL 1 час; cache hit тестируется. На 429 соблюдается Retry-After без tight retry loop.", "У источника всегда видимая ссылка Have I Been Pwned, данные не объявляются собственной базой; никакой HTML из description не исполняется.", "Fixture mode явный, отдельный, с маркировкой; CI не вызывает внешнюю сеть."],
+    "checks": "httpx mocked tests 200/empty/429/500/timeout/cache + минимум один live smoke с attribution до демо.",
+    "handoff": "@владелец-ui @владелец-visit: 3 статуса, правила сопоставления домена и sample responses."
+  },
+  {
+    "key": "ui", "title": "[P0] Popup: обещания, наблюдения, утечки и все состояния",
+    "priority": "P0", "lane": "D · UI", "estimate": 90, "area": "extension", "depends": ["setup"],
+    "scope": "Построить React popup на типах/fixtures; состояние и транспорт передавать через props/adapters. Можно работать до готовности backend и collector.",
+    "files": "apps/extension/entrypoints/popup/, apps/extension/components/, apps/extension/styles/, DESIGN.md",
+    "criteria": ["Один понятный сценарий: выбрать/вставить публичную политику → показать, какие данные отправятся → Проверить → увидеть цитату, факт и ограничение.", "Карточки анализа и утечек независимы: ошибка HIBP не скрывает анализ, ошибка анализа не скрывает утечки.", "Реализованы idle/loading/success/empty/partial/error/retry, unsupported page, offline; неизвестно не окрашивается как безопасно.", "Показаны источник HIBP, matched_domain, дата проверки, stale и явная пометка fixture/rules/llm.", "Длинные домены/русский текст не обрезают действия; popup 320–420px; клавиатура, видимый focus, label/aria-live; нативные button/link.", "Нет фальшивых кнопок, secrets, innerHTML и blanket permission requests; loading не сдвигает основное действие.", "Страница не отправляется автоматически; текст политики пользователь подтверждает перед отправкой. Автобейдж отправляет только hostname после отдельного opt-in.", "В PR приложены снимки хотя бы success, partial error и narrow viewport + результаты проверки клавиатуры."],
+    "checks": "typecheck, lint, build; component/state tests при добавлении логики; ручные fixtures всех состояний.",
+    "handoff": "@владелец-connect: интерфейс props/controller и UI для 501/422/timeout."
+  },
+  {
+    "key": "connect", "title": "[P0] Интеграция collector → background → API → popup",
+    "priority": "P0", "lane": "A · Extension", "estimate": 60, "area": "integration", "depends": ["collect", "analyze", "breaches", "ui"],
+    "scope": "Соединить реальные модули, убрать использование fixtures из обычного режима. Транспорт держать в background, не content script.",
+    "files": "apps/extension/entrypoints/background.ts, apps/extension/lib/api-client*, apps/extension/lib/controller*; минимальная wiring правка popup",
+    "criteria": ["Ручной happy path в unpacked Chrome работает с локальным FastAPI без БД; типы из api.generated.ts.", "Явный backend host permission соответствует WXT_API_BASE_URL; production только HTTPS, локально loopback HTTP; без wildcard <all_urls> для транспорта.", "Данные покидают браузер только по договорённому потоку; ключи провайдеров отсутствуют в .output.", "Timeout/cancel, повторный клик, закрытие popup и смена вкладки не оставляют вечный spinner и не подменяют результат другого hostname.", "Сломанный JSON, 501, 422, 5xx и offline дают раздельные понятные состояния и retry; частичный результат сохраняется.", "Поддерживаются restart MV3 worker и отсутствие in-memory state; результат привязан к hostname/tab generation.", "Согласованы точечный CORS для dev preview (если нужен), host permissions и endpoint; wildcard credentials не используются.", "Smoke test с реальным HTTP зафиксирован в PR; API/collector не подменены fixtures без пометки."],
+    "checks": "npm + backend checks; ручной Chrome MV3 smoke: обычная вкладка, смена домена, offline, повторный запуск worker.",
+    "handoff": "@владелец-qa: точный commit, команды запуска, два известных ограничения."
+  },
+  {
+    "key": "visit", "title": "[P0] Бейдж утечек при заходе на разрешённый пользователем сайт",
+    "priority": "P0", "lane": "C · Navigation", "estimate": 60, "area": "extension", "depends": ["breaches", "ui"],
+    "scope": "Добавить добровольный режим проверки hostname при навигации. activeTab сам по себе не даёт постоянный доступ; запросить optional host permission только для выбранного сайта из явного клика.",
+    "files": "apps/extension/lib/navigation*, apps/extension/lib/badge*, apps/extension/wxt.config.ts; background регистрация согласуется с connect",
+    "criteria": ["Пользователь включает «Проверять этот сайт при открытии» и видит, что серверу уйдёт hostname; отказ в разрешении не ломает ручную проверку.", "На top-level navigation для разрешённых origin обновляется badge; никакой отправки path/query, инкогнито, неподдерживаемых схем или непринятых сайтов.", "Повторные onUpdated события дедуплицированы, TTL кэш ограничен, очистка badge при уходе на другой домен/закрытии вкладки.", "Async ответ не прикрепляется к уже изменившейся вкладке; перезапуск MV3 worker не ломает opt-in, настройки в chrome.storage.local.", "Неизвестное/ошибка = '?' или нейтральное состояние; 0 никогда не значит безопасен; детали раскрываются в popup.", "Можно отключить проверку сайта и удалить его разрешение; следующие навигации не отправляют hostname.", "Тесты событий навигации/гонки/отказа + ручной тест enable → navigate → disable → navigate."],
+    "checks": "Mocked browser event tests; живой Chrome с двумя вкладками и сменой домена.",
+    "handoff": "@владелец-connect @владелец-qa: общий registerNavigationChecks(), не перезаписывать background.ts."
+  },
+  {
+    "key": "qa", "title": "[P0] Приёмка, демо на 3 минуты и воспроизводимая сборка",
+    "priority": "P0", "lane": "D · QA + Coordinator", "estimate": 60, "area": "integration", "depends": ["connect", "visit"],
+    "scope": "Пройти acceptance matrix, исправить P0 дефекты и подготовить демонстрацию. Чеклист/fixture pages готовить заранее параллельно, окончательная приёмка после интеграции.",
+    "files": "docs/DEMO.md, tests/fixtures/, smoke scripts, bugfixes только по найденным проблемам",
+    "criteria": ["Чистый clone по docs/START.md запускается на Node 22/Python 3.12; нет обязательных ключей или БД.", "Демо: разрешённый сайт → бейдж → известные утечки; публичная политика + факты → объяснение с цитатой; другой сайт/отсутствие данных → честное unknown.", "При отсутствии сети есть отдельно помеченный fixture режим; реальные сайты не обвиняются синтетическими фактами.", "Проверены 0/1/many incidents, HIBP 429, backend offline, slow LLM, policy missing, restricted page, permission denied, navigation race, service-worker restart.", "Проверка bundle/логов не находит secrets, cookie values, URL queries или пользовательский policy_text.", "Есть 3-минутный сценарий, запасной скринкаст/скриншоты, zip артефакт и список известных ограничений.", "Все P0 feature PR имеют независимый approve, зелёный CI и merged; доска отражает фактический статус, не просто закрытый PR."],
+    "checks": "Полная локальная проверка + CI + unpacked Chrome acceptance matrix, результаты в PR/DEMO.md.",
+    "handoff": "@Vroote: demo build, точный commit, что действительно работает и что является mock."
+  },
+  {
+    "key": "archive", "title": "[STRETCH] Diff двух версий политики на подготовленном примере",
+    "priority": "Stretch", "lane": "B · Optional", "estimate": 50, "area": "backend", "depends": ["qa"],
+    "scope": "Только после готового P0: показать различия двух заранее подготовленных публичных версий политики с датой и источником. Live Wayback crawler в MVP не входит.",
+    "files": "Отдельный archive module + отдельный UI компонент; не менять контракт core без согласования",
+    "criteria": ["Обе версии имеют проверяемый источник и дату; fixture явно помечен.", "Diff текста и краткое объяснение не выдают отсутствие фразы за доказанный юридический факт.", "Недоступный архив не ломает core; произвольный server-side URL fetch не добавляется.", "За 50 минут результат либо отдельно готов, либо задача остаётся в backlog без блокировки демо."],
+    "checks": "Deterministic diff test, проверка attribution и demo smoke.",
+    "handoff": "Начинать только с разрешения координатора после core acceptance; если резерв <45 мин — не брать."
+  },
+  {
+    "key": "admin", "title": "[ADMIN] Защита main: один approve, required CI и автоматизация Project",
+    "priority": "P0", "lane": "Owner · Vroote", "estimate": 15, "area": "platform", "depends": ["setup"],
+    "scope": "Владельцу настроить enforcement, недоступный роли Write. Не блокировать параллельную разработку, но не объявлять процесс технически защищённым до проверки.",
+    "files": "docs/GITHUB-SETUP.md, .github/branch-protection.json; GitHub Settings/Project workflows",
+    "criteria": ["Для main включены PR-only, 1 required approval, dismiss stale approvals, required status ci, conversation resolution; без force push/delete.", "Автор PR и reviewer используют разные GitHub identities с Write; два процесса на одном аккаунте не могут независимо approve.", "Если приватный репозиторий на тарифе без branch protection — ограничение явно записано, без самовольной смены видимости/тарифа.", "Project доступен команде; включены встроенные Item closed/PR merged → Done и reopen → Todo либо установлен отдельный PROJECT_TOKEN для подготовленного workflow.", "Ни OAuth token разработчика, ни ключ LLM не копируются в исходники; Project secret имеет только необходимые scopes.", "После создания checks требование ci проверено на реальном PR; approval enforcement не обходится admin merge.", "После merge setup выполнена project-sync сверка; секрет/автоматизация проверены реальным событием."],
+    "checks": "Проверка settings/API + реальный PR без approve блокируется; после approve/CI готов к squash merge.",
+    "handoff": "@Vroote: текущий DREdward-chell имеет Write, admin=false. Финальный статус прав и проверок записать в issue."
+  }
+]
