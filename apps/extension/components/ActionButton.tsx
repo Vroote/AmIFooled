@@ -1,6 +1,9 @@
 /** Native button with a stable width: a busy state must not move the main action. */
 
+import Icon, { type IconName } from './Icon';
+
 interface Props {
+  icon?: IconName;
   type?: 'button' | 'submit';
   children: string;
   onClick: () => void;
@@ -10,6 +13,7 @@ interface Props {
 }
 
 export default function ActionButton({
+  icon,
   type = 'button',
   children,
   onClick,
@@ -25,6 +29,7 @@ export default function ActionButton({
       disabled={disabled || busy}
       aria-busy={busy || undefined}
     >
+      {busy ? <span className="spinner" aria-hidden="true" /> : icon ? <Icon name={icon} /> : null}
       {children}
     </button>
   );

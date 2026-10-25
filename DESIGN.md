@@ -1,24 +1,27 @@
 ---
 version: alpha
 name: AmIFooled
-description: Спокойная карточка наблюдений о сайте с явным разделением фактов и неизвестного.
+description: Компактная проверка сайта — локальные наблюдения, документ и краткая сводка.
 colors:
-  primary: "#315c96"
-  background: "#eef3f9"
+  primary: "#196c61"
+  background: "#f3f5f4"
   surface: "#ffffff"
-  text: "#162b43"
-  muted: "#51647a"
-  border: "#bac9db"
+  text: "#233c37"
+  muted: "#60716b"
+  border: "#dce4df"
+  tint: "#eaf2ed"
+  attention: "#8b581c"
+  attention-background: "#fff4e2"
 typography:
   display:
     fontFamily: "'Avenir Next', 'Trebuchet MS', sans-serif"
   body:
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
 rounded:
-  panel: "12px"
+  panel: "16px"
 spacing:
-  page: "24px"
-  section: "28px"
+  page: "20px"
+  section: "16px"
 components:
   notice: {}
 ---
@@ -27,101 +30,97 @@ components:
 
 ## Overview
 
-Product/tool register: компактное расширение для русскоязычного участника хакатона,
-который хочет понять условия сайта и увидеть источники. География и юридические
-обязательства пользователей не определяются языком интерфейса. Язык ru, Latin в доменах.
+Русскоязычное расширение для быстрого просмотра фактов о текущем сайте. Решение #25:
+пользователь попросил интерфейс в духе AdBlock, меньше текста, счётчики и последовательность
+«Найти соглашение → ссылка → Проверить → короткая сводка». Это заменяет автоматический
+поиск при открытии popup из #23. Сразу и после нахождения документа видна альтернатива «Вставить свою ссылку». Клик на поиск загружает документ локально; отдельное
+нажатие «Проверить» подтверждает отправку. Не смешивать discovery и анализ.
 
-North Star — карточка наблюдений исследователя: цитата, наблюдение, ограничение.
-Синяя вертикальная отметка связывает блок с источником, а не изображает оценку риска.
-Пространство и спокойный шрифт важнее тревожного «security score». Не делать красный
-щит, зелёную галочку безопасности, dashboard ради dashboard или маркетинговый лендинг.
+North Star — небольшой прибор для проверки сайта. Имя сайта, две равные плитки с крупными
+числами, одна основная кнопка; спокойный зелёный акцент и тёплая отметка известных утечек.
+Без выдуманного security score, маркетингового заголовка и зелёной оценки безопасности.
+Длинные пояснения доступны в нативных раскрываемых деталях. Результат — короткая сводка
+и до трёх заголовков замечаний; остальное раскрывается, а не исчезает из ответа.
 
-Popup (#5) состоит из формы соглашения и двух независимых карточек — сверка и утечки.
-Карточка несёт собственный статус, собственную ошибку и собственный retry: отказ одной
-никогда не прячет результат другой. Результат по чужому hostname отбрасывается.
-Обычный popup подключён к реальному background/API; demo controller остаётся только
-для отдельных тестов. При смене документа обе карточки и текст сбрасываются.
+Обычный popup использует реальный background/API. Demo controller предназначен только
+для тестов и помечает синтетические данные. Анализ и утечки независимы; смена документа
+сбрасывает только анализ, навигация сбрасывает всё и отменяет pending requests.
 
-Runtime owner — `apps/extension/styles/base.css` (Model B). Этот документ отражает его
-семантические значения; другой token package/ThemeProvider не добавляется. Mapping:
-`colors.X → --color-X`; `typography.display/body → --font-display/body`;
-`rounded.panel → --radius-panel`; `spacing.page/section → --space-page/section`.
-Потребители — popup и notice. При изменении токенов обновлять CSS и документ вместе.
+## Runtime ownership
+
+`apps/extension/styles/base.css` — canonical runtime (Model B). DESIGN.md отражает его
+семантические токены: `colors.X → --color-X`, `typography.display/body → --font-display/body`,
+`rounded.panel → --radius-panel`, `spacing.page/section → --space-page/section`.
+При изменении CSS обновлять этот документ; отдельный ThemeProvider/token pipeline не нужен.
+Потребители — popup и notice. Не дублировать эти значения в локальных стилях компонентов.
 
 ## Colors
 
-Холодный светлый background, белый surface, тёмный text, muted для пояснений. Primary
-только акцент и focus; не означает риск/безопасность. Severity не кодируется цветом:
-`Требует внимания` и `К сведению` различаются текстом, а отметка слева лишь связывает блок с
-источником. Цвет никогда не единственный носитель состояния. Border отделяет области;
-forced-colors возвращает системные цвета и рисует рамки через CanvasText/ButtonText.
-Warning не объявляет противоречие: это может быть открыто описанное условие самого документа.
-Пока только light theme, без переключателя и удалённых font/theme запросов.
+Светлый серо-зелёный фон, белые рабочие поверхности, тёмные чернила. Primary обозначает
+действие/ссылку/focus, не уровень безопасности. Amber означает «требует внимания» или
+известный инцидент; рядом всегда текст/число. Unknown отображается «—», а не нулём.
+`not_found` означает только отсутствие совпадений в HIBP. Цвет не заменяет смысл.
+Light theme, без внешних шрифтов и удалённых ресурсов; forced-colors использует системные
+рамки и scrollbar. Рамка плитки внимания #ead9bb — локальный декоративный тон, не статус.
 
 ## Typography
 
-Display с округлыми формами для названия/заголовка, system body с поддержкой кириллицы
-для доказательств. Body 15px/1.55; заголовок 25px/1.3, основной статус 16px. Никаких
-капслок-параграфов. Длинные домены переносить без потери данных. Внешние шрифты не грузить.
+Avenir Next/Trebuchet для бренда, hostname и цифр; системный шрифт с кириллицей для текста.
+Body 14px/1.5, заголовок сайта 22px/1.25, счётчик 34px с tabular-nums, управляющий текст
+12–14px, вспомогательные подписи 10–11px. Числа/даты ru-RU. Домены и длинные заголовки
+переносятся, полный адрес документа остаётся ссылкой. У сокращённой сводки есть раскрытие.
 
 ## Layout
 
-Popup 380px с max-width 100vw; проверено 320, 380 и 420px без горизонтального overflow.
-Минимум body 320px предотвращает сжатие нативного Chrome action popup при вычислении
-его начального preferred size; это также минимальная поддерживаемая ширина интерфейса.
-`overflow-wrap: anywhere` на `.popup` наследуется общей строкой состояния, preview payload,
-карточками и источниками: допустимый длинный hostname переносится во всех состояниях.
-Поля 24px (ниже 360px — 16px), разделы 28px, естественный вертикальный скролл. Один
-заголовок и одна общая строка состояния, затем форма и две карточки. Кнопка действия
-имеет min-width 220px и во время загрузки меняет только aria-busy/disabled, поэтому
-основное действие не смещается; ниже 360px кнопки занимают всю ширину.
+Popup шириной 400px, min-width 320px, max-width 100vw. Две колонки счётчиков сохраняются
+на 320px. Поля 20px, ниже 360px — 16px. Между разделами 16px. Начальный экран содержит
+сайт, счётчики, поиск и свёрнутые настройки. После загрузки документа — источник и кнопка
+проверки; после ответа — сводка. Естественный вертикальный scroll для длинных результатов.
+Никаких вложенных прокруток, кроме ограниченного 180px read-only текста документа.
 
 ## Elevation & Depth
 
-Плоская поверхность, различие через тон и левую отметку, без теней и blur.
-Нет всплывающих слоёв в setup. Будущие overlays должны сохранять focus.
-
-## Shapes
-
-Panel radius 12px. Не превращать каждый текстовый фрагмент в pill; факты читаются как
-обычный текст с источником. Смысловая отметка 4px не обозначает степень угрозы.
+Плоские поверхности и тонкие рамки без blur/градиентов/декоративных теней. Вертикальный
+акцент только на активной карточке соглашения. Скругления панелей 16px, кнопок 10px.
+Маленькие локальные SVG в одном штрихе дополняют подписи, всегда aria-hidden.
 
 ## Components
 
-Notice: h2 + пояснение, без неработающей кнопки. Card: h2 + строка статуса с aria-live +
-тело + необязательный footer с собственным retry. Button: нативный `button` в двух
-вариантах, hover/active/disabled/busy описаны в одном месте. Field: `label[for]` +
-`textarea` + счётчик символов, при превышении лимита — aria-invalid и текстовая подсказка.
-Payload: перечисление того, что уйдёт на сервер, рядом с кнопкой отправки.
-
 | Capability | Canonical owner | Source of truth | Allowed variants | Verification |
 |---|---|---|---|---|
-| Scrollbar | styles/base.css | CSS semantic tokens | global baseline, forced colors | browser computed style |
-| Button | components/ActionButton.tsx | styles/base.css `.action` | primary, secondary | клавиатура + computed style |
-| Card | components/CardShell.tsx | styles/base.css `.card` | analysis, breaches, unsupported | ручной обход состояний |
-| Field | components/PolicyForm.tsx | styles/base.css `.field__*` | URL fallback и read-only preview | label/aria-invalid в браузере |
+| Scrollbar | styles/base.css | semantic scrollbar tokens | global, forced colors | browser + static audit |
+| Button | components/ActionButton.tsx | `.action` | primary, secondary, icon, busy | keyboard, pending tests |
+| Card | components/CardShell.tsx | `.card` | analysis, breaches, unsupported | independent result/error states |
+| Field | components/PolicyForm.tsx | `.field__*` | URL fallback, read-only preview | validation, focus, retries |
+| Counters | components/SiteStats.tsx | `.site-stats`, `.stat` | local cookies, manual HIBP | unknown vs zero tests |
+| Disclosure | native details/summary | `.disclosure`, detail classes | source, evidence, settings | keyboard and browser |
+| Icon | components/Icon.tsx | shared local SVG paths | decorative beside text | accessible names remain text |
 
-Scrollbar общий: thumb/track/hover/active tokens, standard properties + WebKit fallback,
-forced-colors → auto. Новые scroll surfaces наследуют baseline. Не скрывать скроллбар.
+Нативная кнопка проверки HIBP использует компактный `.text-button` внутри SiteStats;
+она не эквивалент full-width основному действию. Настройки остаются NavigationOptIn,
+только свёрнуты: согласие, отзыв разрешения и отдельные ошибки не меняются.
 
-Будущие controls — native button/a, видимый focus, hover/active/disabled/busy в одном
-общем компоненте, labels и status text; idle/loading/partial/error/unknown все отличимы
-текстом. Сейчас движение отсутствует, поэтому reduced-motion не меняет содержимое.
-Иконок нет; символ вопроса — часть марки, скрыт от screen reader рядом с названием.
-Дата/число в ru-RU; источники показывать ссылками. Не писать «безопасен» при count=0.
+Форма URL использует noValidate, label/aria-describedby, inline ошибки, сохранение ввода
+и focus на невалидном поле. Публичный источник виден перед анализом. Краткая подпись
+рядом с кнопкой объясняет отправку текста и наблюдений; перечень payload/preview раскрывается.
+Обрезка длинного документа видна сразу. Цитаты, evidence IDs/ограничения и метод проверки
+доступны в деталях, точный текст не изменяется ради краткости.
+
+## Motion & Accessibility
+
+Hover 160ms, стрелка сдвигается на 3px, spinner только во время ожидания. Reduced-motion
+полностью отключает анимацию и переходы; текст ожидания остаётся. Нативные button/a/details,
+видимый focus 3px, no icon-only actions. Размер busy кнопки и текст остаются стабильными.
+Не заменять status/error цветом. Результаты/загрузка/ошибки объявляются через status/live
+regions; idle анализ не занимает отдельную пустую карточку.
+Scrollbar общий: thumb/track/hover/active tokens, standard + WebKit, forced-colors → auto.
 
 ## Do's and Don'ts
 
-- Do: показывать источник, точную цитату и предел наблюдения рядом с выводом.
-- Do: маркировать synthetic/rules/llm, ошибки и неполноту данных.
-- Do: писать «цитировать нечего», когда вывод построен на отсутствии фразы в тексте.
-- Do: называть ошибку ошибкой — «результата нет», а не пустой результат.
-- Do: отличать HTTP 200 с unavailable от not_found; общий статус остаётся failed/partial.
-- Don't: подменять ноль найденных записей обещанием безопасности.
-- Don't: показывать декоративные risk scores или отключённые псевдо-действия.
-- Don't: отправлять текст соглашения без явного нажатия пользователя.
-
-Автопоиск #23: источник, тип и раскрываемый read-only preview вместо вставки текста.
-URL fallback появляется при ошибке или выборе другого документа. Кнопки и ошибки
-следуют существующим ActionButton/field токенам. Смена документа очищает старый анализ,
-сохраняя карточку утечек. Данные отправляются в анализ только по отдельной кнопке.
+- Показывать только наблюдаемое количество cookies (без HttpOnly), отсутствие данных ≠ 0.
+- Запрашивать HIBP по клику или ранее выданному opt-in; открытие popup не отправляет домен.
+- Поиск и отправка документа — два отдельных действия. URL fallback вместо вставки текста.
+- Не называть document-only warning доказанным нарушением. Отсутствие сигнала ≠ безопасность.
+- Не скрывать ошибки проверки, частичные данные, truncation или demo/stale метки.
+- Сохранять доступ к полному ответу, источникам, цитатам и ограничениям через раскрытие.
+- Не добавлять новые permissions, backend endpoints или библиотеки ради декора.

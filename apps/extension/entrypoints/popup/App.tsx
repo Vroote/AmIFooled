@@ -9,9 +9,11 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 
 import AnalysisCard from '../../components/AnalysisCard';
 import BreachesCard from '../../components/BreachesCard';
+import SiteStats from '../../components/SiteStats';
+import Icon from '../../components/Icon';
 import NavigationOptIn from '../../components/NavigationOptIn';
 import PolicyForm from '../../components/PolicyForm';
-import { OVERALL_TEXT, UNSUPPORTED_TEXT } from '../../components/messages';
+import { UNSUPPORTED_TEXT } from '../../components/messages';
 import { RequestError, isRetryable, type PopupController } from './controller';
 import { sanitizePolicyText } from '../../lib/collector-policy';
 import ActionButton from '../../components/ActionButton';
@@ -20,7 +22,6 @@ import {
   canSubmitPolicy,
   currentHostname,
   initialState,
-  overallStatus,
   reducer,
   type RequestFailure,
 } from './state';
@@ -129,7 +130,6 @@ export default function App({ controller }: { controller: PopupController }) {
 
   const changePolicy = useCallback((text: string) => dispatch({ type: 'policy/changed', text }), []);
 
-  const overall = overallStatus(state);
   const unsupported =
     state.page.phase === 'ready' && state.page.context.status === 'unsupported'
       ? state.page.context.reason
@@ -137,25 +137,10 @@ export default function App({ controller }: { controller: PopupController }) {
 
   return (
     <main className="popup">
-      <header>
-        <p className="brand">
-          AmIFooled<span aria-hidden="true">?</span>
-        </p>
-        <h1>
-          Что сайт обещает.
-          <br />
-          Что мы можем проверить.
-        </h1>
-        <p className="overall" role="status">
-          {OVERALL_TEXT[overall]}
-          {hostname ? ` · ${hostname}` : ''}
-        </p>
-        {controller.demo ? (
-          <p className="demo">
-            Демо-режим: показаны синтетические данные вымышленного сервиса. Настоящая проверка
-            подключается отдельно.
-          </p>
-        ) : null}
+      <header className="site-header">
+        <div className="brand-row"><p className="brand">AmIFooled<span aria-hidden="true">?</span></p><span className="brand-caption">Проверка сайта</span></div>
+        <div className="site-heading"><span className="site-icon"><Icon name="globe" /></span><div><p className="eyebrow">Текущий сайт</p><h1>{hostname ?? (unsupported ? 'Недоступная страница' : 'Определяю сайт…')}</h1></div></div>
+        {controller.demo ? <p className="demo">Демо · вымышленные данные</p> : null}
       </header>
 
       {unsupported ? (
@@ -166,17 +151,7 @@ export default function App({ controller }: { controller: PopupController }) {
         </section>
       ) : (
         <>
-          <PolicyForm
-            controller={controller}
-            hostname={hostname}
-            policyText={state.policyText}
-            evidence={state.evidence}
-            canSubmit={canSubmitPolicy(state)}
-            busy={state.analysis.phase === 'loading'}
-            notice={state.notice}
-            onChange={changePolicy}
-            onSubmit={runAnalysis}
-          />
+          <SiteStats evidence={state.evidence} breaches={state.breaches} canCheck={canCheckBreaches(state)} onCheck={runBreaches} />
           <AnalysisCard
             state={state.analysis}
             evidence={state.evidence}
@@ -187,20 +162,35 @@ export default function App({ controller }: { controller: PopupController }) {
             }
             onRetry={runAnalysis}
           />
-          <BreachesCard
+          <PolicyForm
+            controller={controller}
+            hostname={hostname}
+            policyText={state.policyText}
+            evidence={state.evidence}
+            canSubmit={canSubmitPolicy(state)}
+            busy={state.analysis.phase === 'loading'}
+            reviewed={state.analysis.phase === 'ok'}
+            notice={state.notice}
+            onChange={changePolicy}
+            onSubmit={runAnalysis}
+          />
+          {state.breaches.phase === 'ok' ? <details className="disclosure breaches-detail"><summary>История утечек <span>Источники и даты</span></summary><BreachesCard
+            state={state.breaches} hostname={hostname} canCheck={canCheckBreaches(state)} onCheck={runBreaches}
+          /></details> : <BreachesCard
             state={state.breaches}
             hostname={hostname}
             canCheck={canCheckBreaches(state)}
             onCheck={runBreaches}
-          />
-          <NavigationOptIn hostname={hostname} />
+          />}
+          <details className="disclosure settings"><summary>Настройки сайта</summary><NavigationOptIn hostname={hostname} /></details>
         </>
       )}
 
-      <p className="footnote">
-        Проверяется надёжность сайта, а не пользователя. Ваши адреса и пароли никуда не
-        отправляются.
-      </p>
+      <details className="privacy-details">
+        <summary>Что видит расширение</summary>
+        <p>Счётчик показывает только cookies, доступные JavaScript на этой странице, без HttpOnly. Их имена и значения, пароли и поля форм не отправляются.</p>
+        <p>Утечки ищутся по имени сайта. Анализ получает имя сайта, текст выбранного документа и ограниченные наблюдения. Результат не гарантирует безопасность сайта.</p>
+      </details>
     </main>
   );
 }
