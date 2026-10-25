@@ -13,6 +13,7 @@
     "build": "npm run build --workspace @amifooled/extension",
     "typecheck": "npm run typecheck --workspace @amifooled/extension",
     "test:popup": "node --experimental-strip-types --test \"apps/extension/tests/**/*.test.ts\"",
+    "test": "npm run test --workspace @amifooled/extension",
     "lint": "eslint apps/extension",
     "contracts:types": "openapi-typescript contracts/openapi.json -o apps/extension/lib/api.generated.ts"
   },

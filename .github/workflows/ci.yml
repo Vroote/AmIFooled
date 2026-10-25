@@ -38,6 +38,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm test
       - run: npm run contracts:types && git diff --exit-code -- apps/extension/lib/api.generated.ts
       - run: npm run build
       - uses: actions/upload-artifact@v4

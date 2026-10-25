@@ -65,4 +65,4 @@ Wayback Machine availability API
 - [Статус прав, protection и Project automation](docs/GITHUB-SETUP.md)
 - [GitHub Project](https://github.com/users/Vroote/projects/1/views/1)
 
-Setup даёт запускаемый каркас. Сбор фактов и анализ реализуются отдельными issues; analyze пока возвращает 501. API истории утечек HIBP реализован в #4: [сопоставление доменов, статусы и offline demo](docs/BREACHES.md). Popup подключается отдельно в #6.
+API анализа политики реализован в #3: rules без ключа и опциональная серверная LLM. API истории утечек HIBP реализован в #4: [сопоставление доменов, статусы и offline demo](docs/BREACHES.md). Сбор фактов и подключение popup выполняются отдельно в #2/#6; полный MVP ещё требует интеграции и приёмки.
