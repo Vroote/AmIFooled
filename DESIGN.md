@@ -36,8 +36,10 @@ North Star — карточка наблюдений исследователя:
 Пространство и спокойный шрифт важнее тревожного «security score». Не делать красный
 щит, зелёную галочку безопасности, dashboard ради dashboard или маркетинговый лендинг.
 
-Текущий setup имеет только честное пустое состояние; анализа ещё нет. Соседних экранов
-не было. Будущие состояния описаны в #5 и `docs/API.md`; не имитировать готовый результат.
+Popup (#5) состоит из формы соглашения и двух независимых карточек — сверка и утечки.
+Карточка несёт собственный статус, собственную ошибку и собственный retry: отказ одной
+никогда не прячет результат другой. Результат по чужому hostname отбрасывается.
+Настоящая проверка подключается в #6; до этого показан помеченный демо-режим.
 
 Runtime owner — `apps/extension/styles/base.css` (Model B). Этот документ отражает его
 семантические значения; другой token package/ThemeProvider не добавляется. Mapping:
@@ -48,8 +50,10 @@ Runtime owner — `apps/extension/styles/base.css` (Model B). Этот доку�
 ## Colors
 
 Холодный светлый background, белый surface, тёмный text, muted для пояснений. Primary
-только акцент и будущий focus; не означает риск/безопасность. Цвет никогда не единственный
-носитель состояния. Border отделяет области; high contrast оставляет системные цвета.
+только акцент и focus; не означает риск/безопасность. Severity не кодируется цветом:
+`Расхождение` и `К сведению` различаются текстом, а отметка слева лишь связывает блок с
+источником. Цвет никогда не единственный носитель состояния. Border отделяет области;
+forced-colors возвращает системные цвета и рисует рамки через CanvasText/ButtonText.
 Пока только light theme, без переключателя и удалённых font/theme запросов.
 
 ## Typography
@@ -60,10 +64,11 @@ Display с округлыми формами для названия/загол�
 
 ## Layout
 
-Popup 380px с max-width 100vw; тестовая узкая ширина 320px. Поля 24px, разделы 28px,
-естественный вертикальный скролл. Один заголовок и блок состояния; большой пустой
-dashboard не нужен. Дальше #5 добавляет независимые анализ/утечки и устойчивую область
-pending/error. Не менять ширину основных кнопок во время загрузки.
+Popup 380px с max-width 100vw; проверено 320, 380 и 420px без горизонтального overflow.
+Поля 24px (ниже 360px — 16px), разделы 28px, естественный вертикальный скролл. Один
+заголовок и одна общая строка состояния, затем форма и две карточки. Кнопка действия
+имеет min-width 220px и во время загрузки меняет только aria-busy/disabled, поэтому
+основное действие не смещается; ниже 360px кнопки занимают всю ширину.
 
 ## Elevation & Depth
 
@@ -77,12 +82,18 @@ Panel radius 12px. Не превращать каждый текстовый ф�
 
 ## Components
 
-Notice: h2 + пояснение, без неработающей кнопки. Setup не имеет clickable controls,
-forms, selects, tables, toasts или CRUD, поэтому эти capability не применимы.
+Notice: h2 + пояснение, без неработающей кнопки. Card: h2 + строка статуса с aria-live +
+тело + необязательный footer с собственным retry. Button: нативный `button` в двух
+вариантах, hover/active/disabled/busy описаны в одном месте. Field: `label[for]` +
+`textarea` + счётчик символов, при превышении лимита — aria-invalid и текстовая подсказка.
+Payload: перечисление того, что уйдёт на сервер, рядом с кнопкой отправки.
 
 | Capability | Canonical owner | Source of truth | Allowed variants | Verification |
 |---|---|---|---|---|
 | Scrollbar | styles/base.css | CSS semantic tokens | global baseline, forced colors | browser computed style |
+| Button | components/ActionButton.tsx | styles/base.css `.action` | primary, secondary | клавиатура + computed style |
+| Card | components/CardShell.tsx | styles/base.css `.card` | analysis, breaches, unsupported | ручной обход состояний |
+| Field | components/PolicyForm.tsx | styles/base.css `.field__*` | textarea с счётчиком | label/aria-invalid в браузере |
 
 Scrollbar общий: thumb/track/hover/active tokens, standard properties + WebKit fallback,
 forced-colors → auto. Новые scroll surfaces наследуют baseline. Не скрывать скроллбар.
@@ -97,5 +108,8 @@ forced-colors → auto. Новые scroll surfaces наследуют baseline. 
 
 - Do: показывать источник, точную цитату и предел наблюдения рядом с выводом.
 - Do: маркировать synthetic/rules/llm, ошибки и неполноту данных.
+- Do: писать «цитировать нечего», когда вывод построен на отсутствии фразы в тексте.
+- Do: называть ошибку ошибкой — «результата нет», а не пустой результат.
 - Don't: подменять ноль найденных записей обещанием безопасности.
 - Don't: показывать декоративные risk scores или отключённые псевдо-действия.
+- Don't: отправлять текст соглашения без явного нажатия пользователя.

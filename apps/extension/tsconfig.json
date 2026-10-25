@@ -1,4 +1,7 @@
 {
   "extends": "./.wxt/tsconfig.json",
-  "compilerOptions": {"strict": true, "noUncheckedIndexedAccess": true, "jsx": "react-jsx"}
+  "compilerOptions": {"strict": true, "noUncheckedIndexedAccess": true, "jsx": "react-jsx"},
+  // tests/ runs on Node builtins and is excluded here to avoid adding @types/node to the
+  // extension build; it is checked by `npm run test:popup`.
+  "exclude": ["node_modules", ".output", "tests"]
 }
