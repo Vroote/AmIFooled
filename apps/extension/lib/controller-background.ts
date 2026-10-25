@@ -6,6 +6,7 @@ import { sanitizePolicyText } from './collector-policy';
 import { activeDocument, sameDocument, type DocumentContext } from './controller-context';
 import { requestApi } from './api-client';
 import { record, validEvidence } from './api-validation';
+import { discoverPolicy, findPolicyLinks, retrievePolicy } from './policy-discovery';
 
 export const POPUP_PORT = 'amifooled:popup:v1';
 
@@ -64,6 +65,18 @@ export function connectPopup(port: Browser.runtime.Port, base: string) {
     }
     const current = await checkContext();
     signal.throwIfAborted();
+    if (message.type === 'discoverPolicy' || message.type === 'loadPolicy') {
+      const links = await findPolicyLinks(current);
+      await checkContext();
+      signal.throwIfAborted();
+      const result = message.type === 'discoverPolicy'
+        ? await discoverPolicy(links.origin, links.candidates, signal)
+        : await retrievePolicy(typeof message.url === 'string' ? message.url : '', links.origin, links.candidates, signal);
+      signal.throwIfAborted();
+      await checkContext();
+      if (started !== epoch) throw new RequestError({ kind: 'page_changed' });
+      return result;
+    }
     if (message.type === 'readPolicy') {
       const collected = await collectPageEvidence();
       await checkContext();
@@ -96,7 +109,7 @@ export function connectPopup(port: Browser.runtime.Port, base: string) {
     const id = message.id;
     if (message.type === 'cancel') { pending.get(id)?.abort(); return; }
     const kind = typeof message.type === 'string' ? message.type : '';
-    if (!['prepare', 'readPolicy', 'analyze', 'breaches'].includes(kind)) {
+    if (!['prepare', 'readPolicy', 'discoverPolicy', 'loadPolicy', 'analyze', 'breaches'].includes(kind)) {
       send({ id, ok: false, failure: { kind: 'malformed' } }); return;
     }
     const exclusive = kind === 'analyze' || kind === 'breaches';

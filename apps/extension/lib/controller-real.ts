@@ -2,6 +2,7 @@ import { browser, type Browser } from 'wxt/browser';
 import { RequestError, type PopupController } from '../entrypoints/popup/controller';
 import type { PreparedContext, RequestFailure } from '../entrypoints/popup/state';
 import { record, validEvidence, validAnalysis, validBreaches } from './api-validation';
+import { policyUrl, validPolicyResult, type PolicyResult } from './policy-document';
 
 const PORT_NAME = 'amifooled:popup:v1';
 // Chrome can stop an idle MV3 worker after ~30s even with an open Port.
@@ -68,6 +69,24 @@ export function createRealController(): PopupController {
   }
   return {
     demo: false,
+    async discoverPolicy(signal) {
+      const result = await call('discoverPolicy', {}, signal);
+      if (!validPolicyResult(result)) throw new RequestError({ kind: 'malformed' });
+      return result;
+    },
+    async loadPolicy(url, signal, grantAccess = false) {
+      const safe = policyUrl(url);
+      if (!safe) return { status: 'missing', problem: 'invalid_url', candidates: [] };
+      if (grantAccess) {
+        // Called directly from the permission button, before any await: preserve user activation.
+        const granted = await browser.permissions.request({ origins: [safe.origin + '/*'] });
+        if (!granted) return { status: 'missing', problem: 'denied', candidates: [], url: safe.href } satisfies PolicyResult;
+      }
+      if (signal.aborted) throw new RequestError({ kind: 'timeout' });
+      const result = await call('loadPolicy', { url: safe.href }, signal);
+      if (!validPolicyResult(result)) throw new RequestError({ kind: 'malformed' });
+      return result;
+    },
     subscribeInvalidation(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     dispose() { stopHeartbeat(); port?.disconnect(); port = undefined; invalidate(); },
     async prepare() {
