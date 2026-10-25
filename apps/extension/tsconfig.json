@@ -1,7 +1,9 @@
 {
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {"strict": true, "noUncheckedIndexedAccess": true, "jsx": "react-jsx"},
-  // tests/ runs on Node builtins and is excluded here to avoid adding @types/node to the
-  // extension build; it is checked by `npm run test:popup`.
-  "exclude": ["node_modules", ".output", "tests"]
+  // tests/ is checked here on purpose: `npm run test:popup` runs node
+  // --experimental-strip-types, which strips types without checking them, so tsc is the
+  // only step that checks those files. @types/node is already a devDependency (#16), so
+  // Node builtins resolve and no extra dependency is needed for the extension build.
+  "exclude": ["node_modules", ".output"]
 }
