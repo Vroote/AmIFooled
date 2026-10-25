@@ -47,6 +47,21 @@ jobs:
           name: chrome-mv3
           path: apps/extension/.output/chrome-mv3/
           if-no-files-found: error
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build containers and smoke HTTP API and extension ZIP (no external APIs)
+        run: python scripts/smoke-docker.py --extension-output dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-chrome-mv3
+          path: dist/
+          if-no-files-found: error
   process:
     runs-on: ubuntu-latest
     steps:
@@ -58,10 +73,10 @@ jobs:
         run: python3 scripts/check-pr-link.py
   ci:
     if: always()
-    needs: [backend, extension, process]
+    needs: [backend, extension, process, containers]
     runs-on: ubuntu-latest
     steps:
       - name: Require every check to pass
         env:
           RESULTS: ${{ join(needs.*.result, ',') }}
-        run: test "$RESULTS" = "success,success,success"
+        run: test "$RESULTS" = "success,success,success,success"
