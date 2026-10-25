@@ -113,7 +113,14 @@ git diff --exit-code -- contracts/openapi.json apps/extension/lib/api.generated.
 
 ## Реальное enforcement
 
-Пока владелец не завершил #10, эти правила и `merge-pr.py` — проверяемый рабочий процесс,
-но не серверный запрет прямого push/merge. Текущий автор setup имеет Write, не Admin.
-Нельзя сообщать, что protection включён, без подтверждения GitHub. Для Project sync нужен
-scope `project` и Write к Project; проблемы доступа отражайте в issue, не скрывайте.
+В #10 владелец включил ruleset на `main` (id 25818867, enforcement active, `bypass_actors`
+пуст): PR-only, один approve, required `ci` со strict-политикой, resolved conversations,
+linear history, без force-push и удаления. Подтверждено GitHub и проверено на PR #12,
+поэтому прямой push и merge без approve отклоняет сервер, а не только `merge-pr.py`.
+Admin тоже не обходит правила, `--admin` всё равно не использовать. Детали, параметр
+`require_extra_approval_for_unattributed_changes` и порядок восстановления —
+`docs/GITHUB-SETUP.md`. Для Project sync нужен scope `project` и Write к Project: каждый
+расширяет scope сам через `gh auth refresh -h github.com -s project`. `PROJECT_TOKEN` в
+Actions решением владельца не создаётся, автоматической синхронизации по событиям нет —
+доску обновляет `python3 scripts/project-sync.py` тот, кто делает claim, review или merge.
+Проблемы доступа отражайте в issue, не скрывайте.
