@@ -1,0 +1,22 @@
+{
+  "hostname": "example.com",
+  "matched_domain": "example.com",
+  "status": "ok",
+  "count": 1,
+  "breaches": [
+    {
+      "name": "SyntheticExample",
+      "title": "Synthetic example — not a real incident",
+      "breach_date": "2020-01-01",
+      "data_classes": [
+        "Email addresses"
+      ],
+      "is_verified": false,
+      "source_url": "https://haveibeenpwned.com/"
+    }
+  ],
+  "checked_at": "2026-10-25T00:00:00Z",
+  "source": "fixture",
+  "stale": false,
+  "attribution_url": "https://haveibeenpwned.com/"
+}
