@@ -20,7 +20,6 @@ import {
   currentHostname,
   initialState,
   overallStatus,
-  policyTooLong,
   reducer,
   type RequestFailure,
 } from './state';
@@ -127,31 +126,7 @@ export default function App({ controller }: { controller: PopupController }) {
       );
   }, [controller, hostname, withTimeout]);
 
-  const fillFromPage = useCallback(() => {
-    if (!controller.readPolicyFromPage) {
-      return;
-    }
-    const version = generation.current;
-    controller
-      .readPolicyFromPage()
-      .then((text) => {
-        if (version !== generation.current) return;
-        if (text && text.trim().length > 0) {
-          dispatch({ type: 'policy/filled-from-page', text });
-          return;
-        }
-        dispatch({
-          type: 'notice/set',
-          message: 'На странице не нашлось текста политики — вставьте его вручную.',
-        });
-      })
-      .catch(() => {
-        if (version === generation.current) dispatch({
-          type: 'notice/set',
-          message: 'Не удалось прочитать страницу — вставьте текст вручную.',
-        }); },
-      );
-  }, [controller]);
+  const changePolicy = useCallback((text: string) => dispatch({ type: 'policy/changed', text }), []);
 
   const overall = overallStatus(state);
   const unsupported =
@@ -191,16 +166,14 @@ export default function App({ controller }: { controller: PopupController }) {
       ) : (
         <>
           <PolicyForm
+            controller={controller}
             hostname={hostname}
             policyText={state.policyText}
             evidence={state.evidence}
-            tooLong={policyTooLong(state)}
             canSubmit={canSubmitPolicy(state)}
             busy={state.analysis.phase === 'loading'}
-            canReadPage={typeof controller.readPolicyFromPage === 'function'}
             notice={state.notice}
-            onChange={(text) => dispatch({ type: 'policy/changed', text })}
-            onFillFromPage={fillFromPage}
+            onChange={changePolicy}
             onSubmit={runAnalysis}
           />
           <AnalysisCard

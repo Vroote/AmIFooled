@@ -113,7 +113,7 @@ export function reducer(state: PopupState, action: PopupAction): PopupState {
         evidence: [],
       };
     case 'policy/changed':
-      return { ...state, policyText: action.text, policySource: 'manual', notice: null };
+      return { ...state, policyText: action.text, policySource: 'manual', notice: null, analysis: { phase: 'idle' } };
     case 'policy/filled-from-page':
       return { ...state, policyText: action.text, policySource: 'page', notice: null };
     case 'notice/set':

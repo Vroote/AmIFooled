@@ -8,6 +8,7 @@ export default defineConfig({
     name: 'AmIFooled',
     description: 'Обещания сайта, наблюдаемые факты и известные утечки.',
     permissions: ['activeTab', 'scripting'],
+    optional_host_permissions: ['https://*/*'],
     host_permissions: [apiHostPermission(parseApiBase(import.meta.env.WXT_API_BASE_URL))],
   }),
 });

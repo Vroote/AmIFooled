@@ -1,6 +1,7 @@
 /** Native button with a stable width: a busy state must not move the main action. */
 
 interface Props {
+  type?: 'button' | 'submit';
   children: string;
   onClick: () => void;
   disabled?: boolean;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function ActionButton({
+  type = 'button',
   children,
   onClick,
   disabled = false,
@@ -17,7 +19,7 @@ export default function ActionButton({
 }: Props) {
   return (
     <button
-      type="button"
+      type={type}
       className={`action action--${variant}`}
       onClick={onClick}
       disabled={disabled || busy}

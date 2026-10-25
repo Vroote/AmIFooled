@@ -14,6 +14,7 @@ import type {
   RequestFailure,
   RequestFailureKind,
 } from './state';
+import type { PolicyResult } from '../../lib/policy-document';
 
 export interface AnalyzeInput {
   hostname: string;
@@ -22,6 +23,8 @@ export interface AnalyzeInput {
 }
 
 export interface PopupController {
+  discoverPolicy?(signal: AbortSignal): Promise<PolicyResult>;
+  loadPolicy?(url: string, signal: AbortSignal, grantAccess?: boolean): Promise<PolicyResult>;
   subscribeInvalidation?(listener: () => void): () => void;
   dispose?(): void;
   /** Resolve the active tab and whatever bounded facts may be sent with the policy. */
@@ -232,6 +235,15 @@ export function createDemoController(scenario: DemoScenario = 'ok'): PopupContro
   const empty = scenario === 'empty';
   return {
     demo: true,
+    async discoverPolicy() {
+      return { status: 'ready', candidates: [], document: {
+        url: 'https://demo.example.com/terms', title: 'Демонстрационное соглашение', kind: 'terms',
+        text: DEMO_POLICY, truncated: false, redacted: false,
+      } };
+    },
+    async loadPolicy() {
+      return { status: 'missing', problem: 'not_found', candidates: [] };
+    },
     async prepare() {
       if (scenario === 'unsupported') {
         return { page: { status: 'unsupported', reason: 'restricted' }, evidence: [] };

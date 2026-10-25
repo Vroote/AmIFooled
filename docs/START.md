@@ -91,7 +91,8 @@ npm run build
 Popup по умолчанию использует реальный backend http://127.0.0.1:8000. Для другого адреса
 задайте WXT_API_BASE_URL в apps/extension/.env или окружении сборки и пересоберите расширение;
 manifest автоматически получает permission конкретного backend host. Ключ LLM — только
-на сервере. Полный ручной сценарий, отмена и MV3 restart: [INTEGRATION.md](INTEGRATION.md).
+на сервере. Соглашение ищется автоматически; запасной вариант — ссылка, не полный текст.
+[Границы автопоиска](POLICY-DISCOVERY.md). Полный сценарий, отмена и MV3 restart: [INTEGRATION.md](INTEGRATION.md).
 
 ## Агенту
 

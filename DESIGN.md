@@ -99,7 +99,7 @@ Payload: перечисление того, что уйдёт на сервер,
 | Scrollbar | styles/base.css | CSS semantic tokens | global baseline, forced colors | browser computed style |
 | Button | components/ActionButton.tsx | styles/base.css `.action` | primary, secondary | клавиатура + computed style |
 | Card | components/CardShell.tsx | styles/base.css `.card` | analysis, breaches, unsupported | ручной обход состояний |
-| Field | components/PolicyForm.tsx | styles/base.css `.field__*` | textarea с счётчиком | label/aria-invalid в браузере |
+| Field | components/PolicyForm.tsx | styles/base.css `.field__*` | URL fallback и read-only preview | label/aria-invalid в браузере |
 
 Scrollbar общий: thumb/track/hover/active tokens, standard properties + WebKit fallback,
 forced-colors → auto. Новые scroll surfaces наследуют baseline. Не скрывать скроллбар.
@@ -120,3 +120,8 @@ forced-colors → auto. Новые scroll surfaces наследуют baseline. 
 - Don't: подменять ноль найденных записей обещанием безопасности.
 - Don't: показывать декоративные risk scores или отключённые псевдо-действия.
 - Don't: отправлять текст соглашения без явного нажатия пользователя.
+
+Автопоиск #23: источник, тип и раскрываемый read-only preview вместо вставки текста.
+URL fallback появляется при ошибке или выборе другого документа. Кнопки и ошибки
+следуют существующим ActionButton/field токенам. Смена документа очищает старый анализ,
+сохраняя карточку утечек. Данные отправляются в анализ только по отдельной кнопке.

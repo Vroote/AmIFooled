@@ -46,6 +46,7 @@ const mock = vi.hoisted(() => {
   return { connected, updated, activated, removed, ports, sent,
     browser: {
       runtime: { id: 'extension-id', getURL: (path: string) => 'chrome-extension://extension-id' + path, onConnect: connected, connect: vi.fn(connect) },
+      permissions: { contains: vi.fn(), request: vi.fn() },
       tabs: { query: vi.fn(), get: vi.fn(), onUpdated: updated, onActivated: activated, onRemoved: removed },
       scripting: { executeScript: vi.fn() },
     },
@@ -209,4 +210,53 @@ it('stops heartbeat on worker disconnect and starts exactly one for a new connec
   expect(vi.getTimerCount()).toBe(1);
   controller.dispose?.();
   expect(vi.getTimerCount()).toBe(0);
+});
+
+it('discovers in the bound document and only POSTs after explicit analyze; source URLs stay local', async () => {
+  const text = 'Our terms describe cookies, collection of personal data and retention periods. '.repeat(4);
+  const previous = mock.browser.scripting.executeScript.getMockImplementation()!;
+  mock.browser.scripting.executeScript.mockImplementation((options) => options.func.name === 'readPolicyLinks'
+    ? Promise.resolve([{ documentId: doc, frameId: 0, result: { url: 'https://example.com/page?private=1',
+      links: [{ href: '/terms?language=ru', label: 'Terms of service' }] } }])
+    : previous(options));
+  const fetcher = vi.fn().mockImplementation((url) => Promise.resolve(String(url).includes('/v1/analyze')
+    ? Response.json(analysis)
+    : new Response('<main>' + text + '</main>', { headers: { 'content-type': 'text/html' } })));
+  vi.stubGlobal('fetch', fetcher);
+  const controller = createRealController();
+  const prepared = await controller.prepare();
+  const found = await controller.discoverPolicy!(new AbortController().signal);
+  expect(found.status).toBe('ready');
+  expect(fetcher).toHaveBeenCalledOnce();
+  expect(fetcher.mock.calls[0]?.[0]).toBe('https://example.com/terms?language=ru');
+  const injection = mock.browser.scripting.executeScript.mock.calls.find(([options]) => options.func.name === 'readPolicyLinks');
+  expect(injection?.[0].target).toEqual({ tabId: 7, documentIds: ['document-A'] });
+  if (found.status !== 'ready') throw new Error('expected document');
+  await controller.analyze({ hostname: 'example.com', policyText: found.document.text, evidence: prepared.evidence }, new AbortController().signal);
+  const sent = JSON.stringify(fetcher.mock.calls[1]?.[1]);
+  expect(sent).not.toMatch(/language=|private=|https:\/\/example/);
+});
+
+it('rejects a loaded document after navigation even if the old network request completes', async () => {
+  const previous = mock.browser.scripting.executeScript.getMockImplementation()!;
+  mock.browser.scripting.executeScript.mockImplementation((options) => options.func.name === 'readPolicyLinks'
+    ? Promise.resolve([{ documentId: doc, frameId: 0, result: { url: 'https://example.com/', links: [{ href: '/terms', label: 'Terms' }] } }])
+    : previous(options));
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => {
+    doc = 'document-B';
+    return Promise.resolve(new Response('Our policy covers data collection and cookies. '.repeat(5), { headers: { 'content-type': 'text/plain' } }));
+  }));
+  const controller = createRealController();
+  await controller.prepare();
+  await expect(controller.discoverPolicy!(new AbortController().signal)).rejects.toMatchObject({ failure: { kind: 'page_changed' } });
+});
+
+it('requests only the explicit document origin and preserves a permission denial without fetching', async () => {
+  const controller = createRealController();
+  const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+  mock.browser.permissions.request.mockResolvedValue(false);
+  const result = await controller.loadPolicy!('https://other.com/terms', new AbortController().signal, true);
+  expect(result).toMatchObject({ status: 'missing', problem: 'denied', url: 'https://other.com/terms' });
+  expect(mock.browser.permissions.request).toHaveBeenCalledWith({ origins: ['https://other.com/*'] });
+  expect(fetcher).not.toHaveBeenCalled();
 });
