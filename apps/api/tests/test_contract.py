@@ -17,7 +17,7 @@ def test_health_and_openapi_are_available_without_external_services():
     assert client.get("/openapi.json").status_code == 200
 
 
-def test_analyze_returns_a_contract_valid_response():
+def test_analyze_answers_with_a_contract_valid_response():
     request = json.loads((ROOT / "contracts/fixtures/analysis-request.json").read_text())
     analysis = client.post("/v1/analyze", json=request)
     assert analysis.status_code == 200
