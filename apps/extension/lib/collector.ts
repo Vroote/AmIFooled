@@ -3,8 +3,11 @@ import { browser } from 'wxt/browser';
 import type { components } from './api.generated';
 import { readPageSnapshot, type PageSnapshot } from './collector-page';
 import { sanitizePolicyText } from './collector-policy';
+import { normalizeHostname } from './hostname';
 
 export type AnalysisRequest = components['schemas']['AnalysisRequest'];
+// Kept exported here: the collector has been this module's import path since #2.
+export { normalizeHostname };
 type Evidence = components['schemas']['Evidence'];
 type Observations = Pick<AnalysisRequest, 'hostname' | 'evidence'>;
 
@@ -30,17 +33,6 @@ const errors: Record<CollectorError, string> = {
   unavailable: 'Наблюдения страницы сейчас недоступны. Попробуйте ещё раз.',
 };
 const failure = (code: CollectorError): CollectionResult => ({ status: 'error', code, message: errors[code] });
-
-export function normalizeHostname(hostname: string): string | null {
-  // Reject URL syntax before parsing so credentials/path cannot become a hostname.
-  if (!hostname || /[\s/@:#?\\]/u.test(hostname)) return null;
-  try {
-    const value = new URL(`https://${hostname}`).hostname.toLowerCase().replace(/\.$/, '');
-    if (value.length > 253 || !value.split('.').every((label) =>
-      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) return null;
-    return value;
-  } catch { return null; }
-}
 
 function supportedPage(rawUrl: string | undefined): URL | null {
   try {

@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { registerBackgroundTransport } from './controller-background';
+import background from '../entrypoints/background';
 import { createRealController } from './controller-real';
+import { STORAGE_KEY } from './navigation-optin';
 
 const mock = vi.hoisted(() => {
   const event = () => {
@@ -49,6 +50,8 @@ const mock = vi.hoisted(() => {
       permissions: { contains: vi.fn(), request: vi.fn() },
       tabs: { query: vi.fn(), get: vi.fn(), onUpdated: updated, onActivated: activated, onRemoved: removed },
       scripting: { executeScript: vi.fn() },
+      storage: { local: { get: vi.fn() } },
+      action: { setBadgeText: vi.fn(), setTitle: vi.fn(), setBadgeBackgroundColor: vi.fn() },
     },
   };
 });
@@ -60,6 +63,11 @@ beforeEach(() => {
   mock.sent.length = 0;
   doc = 'document-A';
   mock.connected.clear(); mock.updated.clear(); mock.activated.clear(); mock.removed.clear();
+  mock.browser.storage.local.get.mockResolvedValue({ [STORAGE_KEY]: [] });
+  mock.browser.permissions.contains.mockResolvedValue(true);
+  mock.browser.action.setBadgeText.mockResolvedValue(undefined);
+  mock.browser.action.setTitle.mockResolvedValue(undefined);
+  mock.browser.action.setBadgeBackgroundColor.mockResolvedValue(undefined);
   mock.browser.tabs.query.mockResolvedValue([{ id: 7, url: 'https://example.com/policy?secret=1', active: true }]);
   mock.browser.tabs.get.mockResolvedValue({ id: 7, url: 'https://example.com/policy?secret=1', active: true });
   mock.browser.scripting.executeScript.mockImplementation((options) => Promise.resolve([{
@@ -69,11 +77,49 @@ beforeEach(() => {
       selectionState: options.args[0] ? 'ok' : 'skipped', selectionTruncated: false,
     } : 'example.com',
   }]));
-  registerBackgroundTransport('http://127.0.0.1:8000');
+  vi.stubEnv('WXT_API_BASE_URL', 'http://127.0.0.1:8000');
+  background.main();
 });
 afterEach(() => {
   mock.ports.splice(0).forEach((port) => port.disconnect());
-  vi.unstubAllGlobals(); vi.clearAllMocks(); vi.useRealTimers();
+  vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.clearAllMocks(); vi.useRealTimers();
+});
+
+it('shares real HTTP with opt-in navigation and sends only the hostname', async () => {
+  const fetcher = vi.fn().mockResolvedValue(Response.json({
+    hostname: 'example.com', matched_domain: 'example.com', status: 'not_found', count: 0,
+    breaches: [], checked_at: '2026-10-25T13:00:00Z', source: 'hibp', stale: false,
+    attribution_url: 'https://haveibeenpwned.com/',
+  }));
+  vi.stubGlobal('fetch', fetcher);
+  const navigate = () => mock.updated.emit(7, { status: 'complete' }, {
+    url: 'https://example.com/private?secret=1#fragment', incognito: false,
+  });
+
+  expect(fetcher).not.toHaveBeenCalled();
+  navigate();
+  await vi.waitFor(() => expect(mock.browser.action.setTitle).toHaveBeenCalledTimes(1));
+  expect(fetcher).not.toHaveBeenCalled();
+
+  mock.browser.storage.local.get.mockResolvedValue({ [STORAGE_KEY]: ['example.com'] });
+  mock.browser.permissions.contains.mockResolvedValue(false);
+  navigate();
+  await vi.waitFor(() => expect(mock.browser.action.setTitle).toHaveBeenCalledTimes(2));
+  expect(fetcher).not.toHaveBeenCalled();
+
+  mock.browser.permissions.contains.mockResolvedValue(true);
+  navigate();
+  await vi.waitFor(() => expect(mock.browser.action.setBadgeText).toHaveBeenLastCalledWith({ tabId: 7, text: '0' }));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher).toHaveBeenCalledWith(new URL('http://127.0.0.1:8000/v1/breaches?hostname=example.com'), expect.objectContaining({
+    method: 'GET', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer',
+  }));
+  expect(fetcher.mock.calls[0]?.[1].body).toBeUndefined();
+
+  mock.browser.storage.local.get.mockResolvedValue({ [STORAGE_KEY]: [] });
+  navigate();
+  await vi.waitFor(() => expect(mock.browser.action.setBadgeText).toHaveBeenLastCalledWith({ tabId: 7, text: '' }));
+  expect(fetcher).toHaveBeenCalledTimes(1);
 });
 
 it('prepares and reads policy locally, then sends confirmed analysis only through the background', async () => {

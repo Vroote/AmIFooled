@@ -9,6 +9,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 
 import AnalysisCard from '../../components/AnalysisCard';
 import BreachesCard from '../../components/BreachesCard';
+import NavigationOptIn from '../../components/NavigationOptIn';
 import PolicyForm from '../../components/PolicyForm';
 import { OVERALL_TEXT, UNSUPPORTED_TEXT } from '../../components/messages';
 import { RequestError, isRetryable, type PopupController } from './controller';
@@ -192,6 +193,7 @@ export default function App({ controller }: { controller: PopupController }) {
             canCheck={canCheckBreaches(state)}
             onCheck={runBreaches}
           />
+          <NavigationOptIn hostname={hostname} />
         </>
       )}
 
