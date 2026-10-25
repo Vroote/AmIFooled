@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="UTF-8"><title>Collector smoke</title></head>
+<body style="width: 540px; padding: 12px; font: 14px system-ui">
+  <h1>Collector smoke — fixture</h1>
+  <p>Локальная проверка сборщика. Данные никуда не отправляются.</p>
+  <button id="selection">Собрать выделение</button>
+  <p><label for="policy">Публичный текст политики для проверки</label></p>
+  <textarea id="policy" rows="3" cols="60">Fixture policy: cookies are used. Contact privacy@example.com. See https://example.net/policy?fixture=secret.</textarea>
+  <p><button id="manual">Собрать с ручным текстом</button></p>
+  <p id="summary" aria-live="polite"></p>
+  <pre id="result" style="white-space: pre-wrap; overflow-wrap: anywhere" aria-live="polite">Ожидание действия</pre>
+  <script type="module" src="./main.ts"></script>
+</body></html>
