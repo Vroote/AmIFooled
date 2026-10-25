@@ -87,7 +87,7 @@ def _visible_cookie_counts(request: AnalysisRequest) -> list[tuple[Evidence, int
         if item.kind != "visible_cookie_count":
             continue
         digits = item.value.strip()
-        if digits.isdigit():
+        if digits.isascii() and digits.isdecimal():
             counted.append((item, int(digits)))
     return counted
 

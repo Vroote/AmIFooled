@@ -69,7 +69,7 @@ def analyze_policy(
     request: AnalysisRequest,
     *,
     config: ProviderConfig | None = None,
-    client: httpx.Client | None = None,
+    client: httpx.AsyncClient | None = None,
     now: Callable[[], float] = time.monotonic,
 ) -> AnalysisResponse:
     deadline = now() + ANALYSIS_BUDGET_SECONDS

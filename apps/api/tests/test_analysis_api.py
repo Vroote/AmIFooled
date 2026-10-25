@@ -4,11 +4,14 @@ import json
 import logging
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from app.analysis.body_limit import TOO_LARGE_DETAIL
-from app.analysis.config import MAX_REQUEST_BODY_BYTES
+from app.analysis.config import MAX_REQUEST_BODY_BYTES, ProviderConfig
+from app.analysis.llm import request_findings
+from app.analysis.service import PROVIDER_FAILED_LIMITATION
 from app.main import app
 from app.models import AnalysisResponse
 
@@ -100,3 +103,61 @@ def test_response_never_claims_a_legal_verdict():
     text = json.dumps(body, ensure_ascii=False).lower()
     for forbidden in ("мошенничеств", "нарушает закон", "незаконн", "виновен"):
         assert forbidden not in text
+
+
+@pytest.mark.parametrize("value", ["²", "③", "-1", "1.5", "not-a-number"])
+def test_invalid_cookie_observation_is_unknown_not_a_server_error(value, monkeypatch):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    request = {
+        "hostname": "example.com",
+        "policy_text": "Мы используем cookie.",
+        "evidence": [
+            {
+                "id": "c1",
+                "kind": "visible_cookie_count",
+                "value": value,
+                "limitation": "Synthetic malformed observation.",
+            }
+        ],
+    }
+    response = client.post("/v1/analyze", json=request)
+    assert response.status_code == 200
+    parsed = AnalysisResponse.model_validate(response.json())
+    assert parsed.status == "insufficient_data" and parsed.findings == []
+
+
+def test_malformed_provider_ids_return_http_200_rules_fallback(monkeypatch):
+    config = ProviderConfig(
+        api_key="synthetic-test-key",
+        base_url="https://provider.invalid",
+        model="test",
+        timeout_seconds=1,
+    )
+    monkeypatch.setattr("app.analysis.service.load_provider_config", lambda: config)
+    content = json.dumps(
+        {
+            "findings": [
+                {
+                    "title": "Malformed",
+                    "explanation": "Invalid IDs",
+                    "severity": "warning",
+                    "policy_quote": "не передаём данные третьим лицам",
+                    "evidence_ids": None,
+                }
+            ]
+        }
+    )
+    provider = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+        )
+    )
+    monkeypatch.setattr(
+        "app.analysis.service.request_findings",
+        lambda *args, **kwargs: request_findings(*args, **(kwargs | {"client": provider})),
+    )
+    response = client.post("/v1/analyze", json=REQUEST)
+    assert response.status_code == 200
+    parsed = AnalysisResponse.model_validate(response.json())
+    assert parsed.mode == "rules" and parsed.findings
+    assert PROVIDER_FAILED_LIMITATION in parsed.limitations
