@@ -1,5 +1,10 @@
 from fastapi import FastAPI, HTTPException
 
+from app.analysis import (
+    MAX_REQUEST_BODY_BYTES,
+    BodySizeLimitMiddleware,
+    analyze_policy,
+)
 from app.models import (
     AnalysisRequest,
     AnalysisResponse,
@@ -11,6 +16,13 @@ from app.models import (
 
 app = FastAPI(title="AmIFooled API", version="0.1.0")
 
+# Scoped to the analyze path: the body is bounded before FastAPI parses JSON.
+app.add_middleware(
+    BodySizeLimitMiddleware,
+    max_bytes=MAX_REQUEST_BODY_BYTES,
+    paths=("/v1/analyze",),
+)
+
 
 @app.get("/health", response_model=HealthResponse, operation_id="health")
 def health() -> HealthResponse:
@@ -20,12 +32,12 @@ def health() -> HealthResponse:
 @app.post(
     "/v1/analyze",
     response_model=AnalysisResponse,
-    responses={501: {"model": ErrorResponse}},
+    responses={413: {"model": ErrorResponse}},
     operation_id="analyze",
 )
 def analyze(request: AnalysisRequest) -> AnalysisResponse:
-    # Deliberately explicit: the setup must never masquerade as a working analyzer.
-    raise HTTPException(status_code=501, detail="Analysis provider is not implemented yet")
+    # Always answers: an unusable provider degrades to rules and is reported in limitations.
+    return analyze_policy(request)
 
 
 @app.get(

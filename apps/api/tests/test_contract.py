@@ -17,9 +17,11 @@ def test_health_and_openapi_are_available_without_external_services():
     assert client.get("/openapi.json").status_code == 200
 
 
-def test_scaffold_returns_explicit_not_implemented():
+def test_analyze_is_implemented_and_breaches_is_still_a_scaffold():
     request = json.loads((ROOT / "contracts/fixtures/analysis-request.json").read_text())
-    assert client.post("/v1/analyze", json=request).status_code == 501
+    analysis = client.post("/v1/analyze", json=request)
+    assert analysis.status_code == 200
+    AnalysisResponse.model_validate(analysis.json())
     assert client.get("/v1/breaches", params={"hostname": "example.com"}).status_code == 501
 
 
