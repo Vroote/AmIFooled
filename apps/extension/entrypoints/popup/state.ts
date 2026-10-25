@@ -119,6 +119,9 @@ export function reducer(state: PopupState, action: PopupAction): PopupState {
       if (!belongsToCurrentPage(state, action.hostname)) {
         return state;
       }
+      if (action.data.hostname !== action.hostname) {
+        return { ...state, analysis: { phase: 'failed', failure: { kind: 'malformed' } } };
+      }
       return { ...state, analysis: { phase: 'ok', data: action.data } };
     case 'analysis/failed':
       if (!belongsToCurrentPage(state, action.hostname)) {
@@ -130,6 +133,9 @@ export function reducer(state: PopupState, action: PopupAction): PopupState {
     case 'breaches/succeeded':
       if (!belongsToCurrentPage(state, action.hostname)) {
         return state;
+      }
+      if (action.data.hostname !== action.hostname) {
+        return { ...state, breaches: { phase: 'failed', failure: { kind: 'malformed' } } };
       }
       return { ...state, breaches: { phase: 'ok', data: action.data } };
     case 'breaches/failed':
@@ -181,12 +187,13 @@ export function overallStatus(state: PopupState): OverallStatus {
   if (state.page.context.status === 'unsupported') {
     return 'unsupported';
   }
-  const phases = [state.analysis.phase, state.breaches.phase];
-  if (phases.includes('loading')) {
+  const cards = [state.analysis, state.breaches];
+  if (cards.some((card) => card.phase === 'loading')) {
     return 'working';
   }
-  const done = phases.filter((phase) => phase === 'ok').length;
-  const failed = phases.filter((phase) => phase === 'failed').length;
+  const done = cards.filter((card) => card.phase === 'ok' && card.data.status !== 'unavailable').length;
+  const failed = cards.filter((card) => card.phase === 'failed' ||
+    (card.phase === 'ok' && card.data.status === 'unavailable')).length;
   if (done === 0 && failed === 0) {
     return 'idle';
   }

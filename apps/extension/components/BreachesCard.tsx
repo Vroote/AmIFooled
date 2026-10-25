@@ -83,7 +83,12 @@ export default function BreachesCard({ state, hostname, canCheck, onCheck }: Pro
         {data.stale ? <li className="meta__stale">Ответ из кэша, не свежая проверка.</li> : null}
       </ul>
 
-      {data.breaches.length > 0 ? (
+      {data.status === 'unavailable' ? (
+        <p className="muted">
+          Каталог HIBP недоступен. Число известных утечек сейчас неизвестно.
+          Повторите проверку позже; это не результат об отсутствии записей.
+        </p>
+      ) : data.breaches.length > 0 ? (
         <ul className="breach__list">
           {data.breaches.map((breach) => (
             <li key={breach.name} className="breach">

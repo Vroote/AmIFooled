@@ -96,7 +96,11 @@ export default function AnalysisCard({ state, evidence, canRetry, onRetry }: Pro
   return (
     <CardShell id="analysis" title="Сверка обещаний и наблюдений" status={status}>
       <p>{data.summary}</p>
-      {data.findings.length > 0 ? (
+      {data.status === 'unavailable' ? (
+        <p className="muted">
+          Результат сверки недоступен. Это не означает, что расхождений нет.
+        </p>
+      ) : data.findings.length > 0 ? (
         <ul className="finding__list">
           {data.findings.map((finding, index) => (
             <FindingItem key={`${finding.title}-${index}`} finding={finding} evidence={evidence} />

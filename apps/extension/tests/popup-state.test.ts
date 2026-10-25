@@ -205,3 +205,70 @@ test('both results present means ready', () => {
   state = reducer(state, { type: 'breaches/succeeded', hostname: 'shop.example', data: BREACHES });
   assert.equal(overallStatus(state), 'ready');
 });
+
+test('HTTP 200 unavailable breaches is failed, not a completed check', () => {
+  const state = reducer(ready(), {
+    type: 'breaches/succeeded', hostname: 'shop.example',
+    data: { ...BREACHES, status: 'unavailable', count: null },
+  });
+  assert.equal(state.breaches.phase, 'ok'); // Preserve source/date metadata for the card.
+  assert.equal(overallStatus(state), 'failed');
+});
+
+test('unavailable breaches leaves the independent analysis visible as partial', () => {
+  let state = reducer(ready(), { type: 'analysis/succeeded', hostname: 'shop.example', data: ANALYSIS });
+  state = reducer(state, {
+    type: 'breaches/succeeded', hostname: 'shop.example',
+    data: { ...BREACHES, status: 'unavailable', count: null },
+  });
+  assert.equal(state.analysis.phase, 'ok');
+  assert.equal(overallStatus(state), 'partial');
+  assert.equal(canCheckBreaches(state), true);
+});
+
+test('unavailable analysis is partial with valid breaches and failed with no result', () => {
+  let state = reducer(ready(), {
+    type: 'analysis/succeeded', hostname: 'shop.example',
+    data: { ...ANALYSIS, status: 'unavailable' },
+  });
+  assert.equal(overallStatus(state), 'failed');
+  state = reducer(state, { type: 'breaches/succeeded', hostname: 'shop.example', data: BREACHES });
+  assert.equal(overallStatus(state), 'partial');
+});
+
+test('both unavailable responses remain failed, not ready', () => {
+  let state = reducer(ready(), {
+    type: 'analysis/succeeded', hostname: 'shop.example',
+    data: { ...ANALYSIS, status: 'unavailable' },
+  });
+  state = reducer(state, {
+    type: 'breaches/succeeded', hostname: 'shop.example',
+    data: { ...BREACHES, status: 'unavailable', count: null },
+  });
+  assert.equal(overallStatus(state), 'failed');
+});
+
+test('a foreign response hostname becomes malformed even when the request hostname matches', () => {
+  const state = reducer(ready(), { type: 'analysis/started' });
+  const analysis = reducer(state, {
+    type: 'analysis/succeeded', hostname: 'shop.example',
+    data: { ...ANALYSIS, hostname: 'other.example' },
+  });
+  assert.deepEqual(analysis.analysis, { phase: 'failed', failure: { kind: 'malformed' } });
+  assert.equal(analysis.breaches.phase, 'idle');
+  const breaches = reducer(ready(), {
+    type: 'breaches/succeeded', hostname: 'shop.example',
+    data: { ...BREACHES, hostname: 'other.example' },
+  });
+  assert.deepEqual(breaches.breaches, { phase: 'failed', failure: { kind: 'malformed' } });
+  assert.equal(breaches.analysis.phase, 'idle');
+});
+
+test('a different matched_domain is legitimate and does not cause a hostname error', () => {
+  const state = reducer(ready('www.shop.example'), {
+    type: 'breaches/succeeded', hostname: 'www.shop.example',
+    data: { ...BREACHES, hostname: 'www.shop.example', matched_domain: 'shop.example' },
+  });
+  assert.equal(state.breaches.phase, 'ok');
+  assert.equal(overallStatus(state), 'ready');
+});
