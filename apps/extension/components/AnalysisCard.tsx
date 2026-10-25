@@ -56,7 +56,7 @@ export default function AnalysisCard({ state, evidence, canRetry, onRetry }: Pro
     return (
       <CardShell id="analysis" title="Сверка обещаний и наблюдений" status="Ещё не запускалась">
         <p className="muted">
-          Вставьте текст соглашения выше и нажмите «Отправить и сверить».
+          Дождитесь загрузки документа выше, проверьте источник и нажмите «Отправить и сверить».
         </p>
       </CardShell>
     );
