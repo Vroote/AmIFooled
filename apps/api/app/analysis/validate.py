@@ -46,9 +46,9 @@ def verify_finding(
         return None
 
     known_ids = {item.id for item in request.evidence}
-    evidence_ids = [value for value in dict.fromkeys(finding.evidence_ids) if value in known_ids]
-    if finding.evidence_ids and not evidence_ids:
+    if any(value not in known_ids for value in finding.evidence_ids):
         return None
+    evidence_ids = list(dict.fromkeys(finding.evidence_ids))
 
     return Finding(
         title=title,

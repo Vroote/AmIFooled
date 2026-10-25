@@ -7,6 +7,7 @@ is re-checked against the request before it can reach the user.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -18,6 +19,7 @@ from app.models import AnalysisRequest, Finding
 from .config import ProviderConfig
 
 POLICY_DELIMITER = "<<<POLICY_TEXT_UNTRUSTED>>>"
+MAX_PROVIDER_RESPONSE_BYTES = 128 * 1024
 
 SYSTEM_PROMPT = (
     "Ты помогаешь сравнить обещания из политики конфиденциальности с наблюдениями на "
@@ -62,7 +64,7 @@ def build_payload(request: AnalysisRequest, config: ProviderConfig) -> dict[str,
 def parse_findings(content: str) -> list[Finding]:
     try:
         document = json.loads(content)
-    except json.JSONDecodeError as error:
+    except (ValueError, RecursionError) as error:
         raise ProviderError("provider returned invalid JSON") from error
     if not isinstance(document, dict):
         raise ProviderError("provider returned an unexpected JSON shape")
@@ -75,25 +77,11 @@ def parse_findings(content: str) -> list[Finding]:
 
     findings: list[Finding] = []
     for item in raw_findings[:20]:
-        if not isinstance(item, dict):
-            continue
         try:
-            findings.append(
-                Finding(
-                    title=str(item.get("title", "")),
-                    explanation=str(item.get("explanation", "")),
-                    severity=item.get("severity", "info"),
-                    policy_quote=str(item.get("policy_quote", "")),
-                    evidence_ids=[
-                        str(value)
-                        for value in item.get("evidence_ids", [])
-                        if isinstance(value, str | int)
-                    ],
-                )
-            )
-        except ValidationError:
-            # An unknown severity or shape is dropped, never coerced into a valid value.
-            continue
+            findings.append(Finding.model_validate(item, strict=True))
+        except ValidationError as error:
+            # Do not coerce malformed IDs or retain only the plausible parts of a finding.
+            raise ProviderError("provider returned an invalid finding") from error
     return findings
 
 
@@ -102,36 +90,57 @@ def request_findings(
     config: ProviderConfig,
     *,
     timeout_seconds: float,
-    client: httpx.Client | None = None,
+    client: httpx.AsyncClient | None = None,
 ) -> list[Finding]:
-    payload = build_payload(request, config)
-    owned = client is None
-    http = client or httpx.Client(timeout=timeout_seconds, follow_redirects=False)
+    """Sync service boundary; the async transport can cancel the actual socket I/O."""
+    return asyncio.run(
+        _request_findings(request, config, timeout_seconds=timeout_seconds, client=client)
+    )
+
+
+async def _request_findings(
+    request: AnalysisRequest,
+    config: ProviderConfig,
+    *,
+    timeout_seconds: float,
+    client: httpx.AsyncClient | None,
+) -> list[Finding]:
     try:
-        response = http.post(
-            f"{config.base_url}/v1/chat/completions",
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {config.api_key}",
-                "Content-Type": "application/json",
-                "User-Agent": "AmIFooled/0.1 (+https://github.com/Vroote/AmIFooled)",
-            },
-            timeout=timeout_seconds,
-        )
-    except httpx.HTTPError as error:
+        # HTTPX timeouts bound individual reads; this deadline bounds the whole call.
+        async with asyncio.timeout(timeout_seconds):
+            owned = client is None
+            http = client or httpx.AsyncClient(
+                timeout=timeout_seconds, follow_redirects=False, trust_env=False
+            )
+            try:
+                async with http.stream(
+                    "POST",
+                    f"{config.base_url}/v1/chat/completions",
+                    json=build_payload(request, config),
+                    headers={
+                        "Authorization": f"Bearer {config.api_key}",
+                        "Content-Type": "application/json",
+                        "User-Agent": "AmIFooled/0.1 (+https://github.com/Vroote/AmIFooled)",
+                    },
+                    timeout=timeout_seconds,
+                ) as response:
+                    if response.status_code != 200:
+                        raise ProviderError(f"provider returned HTTP {response.status_code}")
+                    data = bytearray()
+                    async for chunk in response.aiter_bytes(chunk_size=4096):
+                        if len(data) + len(chunk) > MAX_PROVIDER_RESPONSE_BYTES:
+                            raise ProviderError("provider response was too large")
+                        data.extend(chunk)
+                body = json.loads(data)
+                content = body["choices"][0]["message"]["content"]
+                if not isinstance(content, str):
+                    raise ProviderError("provider response content was not text")
+                return parse_findings(content)
+            finally:
+                if owned:
+                    await http.aclose()
+    except (httpx.HTTPError, TimeoutError) as error:
         # Only the exception type is surfaced; the message may echo request details.
         raise ProviderError(f"provider transport failure: {type(error).__name__}") from None
-    finally:
-        if owned:
-            http.close()
-
-    if response.status_code != 200:
-        raise ProviderError(f"provider returned HTTP {response.status_code}")
-    try:
-        body = response.json()
-        content = body["choices"][0]["message"]["content"]
-    except (ValueError, LookupError, TypeError) as error:
+    except (ValueError, LookupError, TypeError, RecursionError) as error:
         raise ProviderError("provider response was not a chat completion") from error
-    if not isinstance(content, str):
-        raise ProviderError("provider response content was not text")
-    return parse_findings(content)

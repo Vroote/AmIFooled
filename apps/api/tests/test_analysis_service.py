@@ -71,6 +71,9 @@ def test_validator_drops_unknown_evidence_but_keeps_findings_without_any():
     without_evidence = unknown.model_copy(update={"evidence_ids": []})
     assert verify_finding(without_evidence, request, allow_missing_quote=False) is not None
 
+    mixed = unknown.model_copy(update={"evidence_ids": ["r1", "ghost"]})
+    assert verify_finding(mixed, request, allow_missing_quote=False) is None
+
 
 def test_validator_restores_the_exact_casing_of_the_policy():
     request = build_request()

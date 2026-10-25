@@ -1,13 +1,22 @@
 """Provider output is treated as a proposal, and policy text never becomes an instruction."""
 
+import asyncio
 import json
+import time
+from dataclasses import replace
 
 import httpx
 import pytest
 
 from app.analysis import analyze_policy
 from app.analysis.config import ProviderConfig, load_provider_config
-from app.analysis.llm import SYSTEM_PROMPT, ProviderError, build_payload, parse_findings
+from app.analysis.llm import (
+    MAX_PROVIDER_RESPONSE_BYTES,
+    SYSTEM_PROMPT,
+    ProviderError,
+    build_payload,
+    parse_findings,
+)
 from app.analysis.service import PROVIDER_DROPPED_LIMITATION, PROVIDER_FAILED_LIMITATION
 from app.models import AnalysisRequest, Evidence
 
@@ -39,8 +48,8 @@ def completion(content: str) -> dict:
     return {"choices": [{"message": {"content": content}}]}
 
 
-def stub_client(handler) -> httpx.Client:
-    return httpx.Client(transport=httpx.MockTransport(handler), timeout=5.0)
+def stub_client(handler) -> httpx.AsyncClient:
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=5.0)
 
 
 def respond_with(payload, status: int = 200, captured: list | None = None):
@@ -192,3 +201,106 @@ def test_config_requires_a_key_and_refuses_plaintext_remote_urls():
     assert load_provider_config({"LLM_API_KEY": "k", "LLM_BASE_URL": "ftp://x"}) is None
     local = load_provider_config({"LLM_API_KEY": "k", "LLM_BASE_URL": "http://127.0.0.1:1234"})
     assert local is not None and local.timeout_seconds <= 14.0
+
+
+@pytest.mark.parametrize("ids", [None, 42, "r1", {"id": "r1"}, ["r1", 42], [None]])
+def test_malformed_provider_ids_fall_back_to_rules(ids):
+    body = completion(
+        json.dumps(
+            {
+                "findings": [
+                    {
+                        "title": "Malformed IDs",
+                        "explanation": "Invalid provider shape must not crash analysis.",
+                        "severity": "warning",
+                        "policy_quote": "используем cookie",
+                        "evidence_ids": ids,
+                    }
+                ]
+            }
+        )
+    )
+    response = analyze_policy(
+        build_request(), config=CONFIG, client=stub_client(respond_with(body))
+    )
+    assert response.mode == "rules"
+    assert len(response.findings) == 1
+    assert PROVIDER_FAILED_LIMITATION in response.limitations
+
+
+def test_mixed_fabricated_ids_drop_the_entire_finding_with_limitation():
+    body = completion(
+        json.dumps(
+            {
+                "findings": [
+                    {
+                        "title": "Mixed IDs",
+                        "explanation": "This claim uses an invented observation.",
+                        "severity": "warning",
+                        "policy_quote": "используем cookie",
+                        "evidence_ids": ["r1", "invented-cookie-id"],
+                    }
+                ]
+            }
+        )
+    )
+    response = analyze_policy(
+        build_request(), config=CONFIG, client=stub_client(respond_with(body))
+    )
+    assert all(finding.title != "Mixed IDs" for finding in response.findings)
+    assert PROVIDER_DROPPED_LIMITATION in response.limitations
+
+
+class SlowProviderStream(httpx.AsyncByteStream):
+    def __init__(self):
+        self.closed = False
+        self.chunks = 0
+
+    async def __aiter__(self):
+        while True:
+            await asyncio.sleep(0.01)
+            self.chunks += 1
+            yield b" "
+
+    async def aclose(self):
+        self.closed = True
+
+
+def test_total_deadline_cancels_dripping_response_and_closes_stream(monkeypatch):
+    # Scale the total budget down so the regression test stays fast in offline CI.
+    monkeypatch.setattr("app.analysis.service.ANALYSIS_BUDGET_SECONDS", 0.3)
+    monkeypatch.setattr("app.analysis.service.MIN_PROVIDER_SECONDS", 0.01)
+    stream = SlowProviderStream()
+    client = stub_client(lambda _: httpx.Response(200, stream=stream))
+    started = time.monotonic()
+    response = analyze_policy(
+        build_request(), config=replace(CONFIG, timeout_seconds=1), client=client
+    )
+    assert time.monotonic() - started < 1
+    assert stream.closed and stream.chunks > 0
+    assert response.mode == "rules" and len(response.findings) == 1
+    assert PROVIDER_FAILED_LIMITATION in response.limitations
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [b" " * (MAX_PROVIDER_RESPONSE_BYTES + 1), b"[" * 1500 + b"]" * 1500],
+)
+def test_oversized_or_deeply_nested_provider_response_falls_back(payload):
+    response = analyze_policy(
+        build_request(),
+        config=CONFIG,
+        client=stub_client(lambda _: httpx.Response(200, content=payload)),
+    )
+    assert response.mode == "rules"
+    assert PROVIDER_FAILED_LIMITATION in response.limitations
+
+
+def test_deeply_nested_finding_content_falls_back():
+    response = analyze_policy(
+        build_request(),
+        config=CONFIG,
+        client=stub_client(respond_with(completion("[" * 1500 + "]" * 1500))),
+    )
+    assert response.mode == "rules"
+    assert PROVIDER_FAILED_LIMITATION in response.limitations
