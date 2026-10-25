@@ -7,11 +7,11 @@ message. Without a key the service stays in deterministic rules mode.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 DEFAULT_BASE_URL = "https://api.deepseek.com"
-DEFAULT_MODEL = "deepseek-chat"
+DEFAULT_MODEL = "deepseek-flash"
 DEFAULT_TIMEOUT_SECONDS = 12.0
 ANALYSIS_BUDGET_SECONDS = 15.0
 MAX_REQUEST_BODY_BYTES = 256 * 1024
@@ -21,10 +21,15 @@ _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 @dataclass(frozen=True)
 class ProviderConfig:
-    api_key: str
+    api_key: str = field(repr=False)
     base_url: str
     model: str
     timeout_seconds: float
+
+    @property
+    def completions_url(self) -> str:
+        # Both DeepSeek's root and its /v1 compatibility base are valid API bases.
+        return f"{self.base_url.rstrip('/')}/chat/completions"
 
 
 def _positive_float(raw: str | None, fallback: float) -> float:
@@ -47,6 +52,8 @@ def load_provider_config(env: dict[str, str] | None = None) -> ProviderConfig | 
         # Refuse to send a server key over plaintext to a remote host.
         return None
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return None
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
         return None
 
     timeout = min(

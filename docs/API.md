@@ -17,7 +17,14 @@ GET /v1/breaches нормализует DNS/IDNA/PSL, включая private suf
 runtime validation. Не добавлять URL-fetch endpoint: так избегаем crawler/SSRF в scope MVP.
 
 `AnalysisResponse.status`: ok / insufficient_data / unavailable. `mode`: rules / llm / fixture.
-Finding содержит точную подстроку политики и IDs действительно наблюдённых evidence.
+LLM Finding содержит точную подстроку документа и только переданные IDs релевантных evidence.
+Для риска в самом тексте (например условия автопродления) допустимы `evidence_ids=[]`.
+Rules может отдельно сообщить об отсутствии упоминания cookies с пустой цитатой.
+`policy_text` принимает один документ: соглашение/политику/раздел cookies до 20 000 символов.
+Без наблюдений `status=insufficient_data` сохраняется даже при найденных условиях в тексте:
+покажите findings и summary/limitations, не трактуйте этот статус как пустой результат.
+`mode=llm` означает успешный ответ провайдера с проверенными цитатами/IDs или корректным
+пустым findings. Если все предложенные findings отвергнуты, остаётся `mode=rules` с пояснением.
 Никаких выводов «сайт мошеннический» из отсутствия сведений или стороннего ресурса.
 
 `BreachesResponse.status`: ok с count>0; not_found с count=0; unavailable с count=null.
@@ -31,12 +38,20 @@ Finding содержит точную подстроку политики и IDs
 Опциональный провайдер ограничен общим отменяемым deadline в оставшемся бюджете анализа
 (не более 15 секунд на анализ) и ответом до 128 KiB. Ошибки формата, таймаут и превышение
 размера оставляют rules с пояснением; finding с любым неизвестным evidence ID отклоняется целиком.
+По умолчанию используется DeepSeek `deepseek-flash`, JSON output, thinking disabled, один
+запрос без retries. При 401/402/429/timeout дополнительно возвращается безопасное пояснение,
+а не сырой ответ провайдера. Точная цитата и существующий ID проверяются кодом; это не
+гарантия правильности интерпретации модели. Пользователь должен проверить смысл цитаты.
+Настройки и ручной live smoke: [START.md](START.md#deepseek--опциональный-анализ-соглашения-и-cookies).
 Для публичного deployment отдельно нужны auth/quotas/rate limiting/HTTPS; публичный сервис
 не является условием шестичасового MVP. Политика отправляется только после подтверждения
 пользователем, автоматический режим утечек отправляет только hostname после opt-in.
 
 ## Источники и принятые ограничения
 
+- [DeepSeek API](https://api-docs.deepseek.com/api/create-chat-completion/),
+  [JSON Output](https://api-docs.deepseek.com/guides/json_mode/): API base, модель, отключение
+  thinking, JSON и ограничение output; пустые/обрезанные ответы обрабатываются как fallback.
 - [WXT installation](https://wxt.dev/guide/installation.html): React + TypeScript, Node ≥22
   для использованной версии 0.21.4; Chrome MV3 — целевая платформа этого хакатона.
 - [Chrome activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab):
