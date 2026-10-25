@@ -159,17 +159,34 @@ def test_provider_failures_keep_rules_and_expose_only_safe_reason(status, reason
     "body",
     [
         {"choices": [None]},
-        {"choices": [{"message": {"content": ""}}]},
-        {"choices": [{"message": {"content": '{"findings": ['}}]},
-        {"choices": [{"message": {"content": '{"findings": null}'}}]},
-        {"choices": [{"message": {"content": "{}"}}]},
-        {"choices": [{"message": {"content": '{"findings": [], "extra": true}'}}]},
+        {"choices": [{"finish_reason": "stop", "message": {"content": ""}}]},
+        {"choices": [{"finish_reason": "stop", "message": {"content": '{"findings": ['}}]},
+        {"choices": [{"finish_reason": "stop", "message": {"content": '{"findings": null}'}}]},
+        {"choices": [{"finish_reason": "stop", "message": {"content": "{}"}}]},
+        {
+            "choices": [
+                {"finish_reason": "stop", "message": {"content": '{"findings": [], "extra": true}'}}
+            ]
+        },
         {"choices": [{"finish_reason": "length", "message": {"content": '{"findings": []}'}}]},
     ],
 )
 def test_empty_truncated_or_wrong_shape_completion_does_not_masquerade_as_llm_success(body):
     response, _ = run(body)
     assert response.mode == "rules"
+    assert PROVIDER_FAILED_LIMITATION in response.limitations
+
+
+@pytest.mark.parametrize("finish", [{}, {"finish_reason": None}], ids=["missing", "null"])
+@pytest.mark.parametrize("findings", [[], [FINDING]], ids=["empty", "finding"])
+def test_unconfirmed_completion_falls_back_even_with_valid_json(finish, findings):
+    body = provider_reply(findings)
+    choice = body["choices"][0]
+    choice.pop("finish_reason")
+    choice.update(finish)
+    response, _ = run(body)
+    assert response.mode == "rules"
+    assert response.findings == []
     assert PROVIDER_FAILED_LIMITATION in response.limitations
 
 

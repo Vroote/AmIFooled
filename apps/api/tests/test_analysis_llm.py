@@ -45,7 +45,7 @@ def build_request(policy: str = POLICY) -> AnalysisRequest:
 
 
 def completion(content: str) -> dict:
-    return {"choices": [{"message": {"content": content}}]}
+    return {"choices": [{"finish_reason": "stop", "message": {"content": content}}]}
 
 
 def stub_client(handler) -> httpx.AsyncClient:

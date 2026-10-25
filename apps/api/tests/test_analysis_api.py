@@ -149,7 +149,10 @@ def test_malformed_provider_ids_return_http_200_rules_fallback(monkeypatch):
     )
     provider = httpx.AsyncClient(
         transport=httpx.MockTransport(
-            lambda _: httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+            lambda _: httpx.Response(
+                200,
+                json={"choices": [{"finish_reason": "stop", "message": {"content": content}}]},
+            )
         )
     )
     monkeypatch.setattr(

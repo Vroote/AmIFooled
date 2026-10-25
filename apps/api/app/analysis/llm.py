@@ -166,7 +166,9 @@ async def _request_findings(
                 choice = body["choices"][0]
                 if not isinstance(choice, dict):
                     raise ProviderError("provider returned an invalid choice")
-                if choice.get("finish_reason") not in {None, "stop"}:
+                # Non-stream responses must explicitly confirm completion. A missing
+                # or null reason is not success, even if content happens to be valid JSON.
+                if choice.get("finish_reason") != "stop":
                     raise ProviderError("provider completion was not finished")
                 content = choice["message"]["content"]
                 if not isinstance(content, str):
