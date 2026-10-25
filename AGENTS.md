@@ -119,5 +119,8 @@ linear history, без force-push и удаления. Подтверждено 
 поэтому прямой push и merge без approve отклоняет сервер, а не только `merge-pr.py`.
 Admin тоже не обходит правила, `--admin` всё равно не использовать. Детали, параметр
 `require_extra_approval_for_unattributed_changes` и порядок восстановления —
-`docs/GITHUB-SETUP.md`. Для Project sync нужен scope `project` и Write к Project;
-`PROJECT_TOKEN` в Actions пока нет, проблемы доступа отражайте в issue, не скрывайте.
+`docs/GITHUB-SETUP.md`. Для Project sync нужен scope `project` и Write к Project: каждый
+расширяет scope сам через `gh auth refresh -h github.com -s project`. `PROJECT_TOKEN` в
+Actions решением владельца не создаётся, автоматической синхронизации по событиям нет —
+доску обновляет `python3 scripts/project-sync.py` тот, кто делает claim, review или merge.
+Проблемы доступа отражайте в issue, не скрывайте.
